@@ -2,7 +2,7 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { Text } from "react-konva";
 
-function TextBox({ obj, selected, onSelect, onUpdate }) {
+function TextBox({ obj, selected, onSelect, onUpdate, onLiveUpdate }) {
   const textRef = useRef(null);
   const textareaRef = useRef(null);
   const isDraggingRef = useRef(false);
@@ -16,22 +16,28 @@ function TextBox({ obj, selected, onSelect, onUpdate }) {
     const textNode = textRef.current;
     if (!textNode || isEditing) return;
 
-    // Update Konva node directly (bypass React reconciliation)
     if (textNode.x() !== obj.x) textNode.x(obj.x);
     if (textNode.y() !== obj.y) textNode.y(obj.y);
     if (textNode.width() !== (obj.width || 200)) textNode.width(obj.width || 200);
-    if (textNode.text() !== textValue) textNode.text(textValue);
+    if (textNode.text() !== (obj.text || "")) textNode.text(obj.text || ""); // Use obj.text
     if (textNode.fontSize() !== (obj.fontSize || 24)) textNode.fontSize(obj.fontSize || 24);
     if (textNode.fill() !== (obj.fill || "#000")) textNode.fill(obj.fill || "#000");
     
     textNode.getLayer()?.batchDraw();
-  }, [obj.x, obj.y, obj.width, obj.fontSize, obj.fill, textValue, isEditing]);
+  }, [obj.x, obj.y, obj.width, obj.fontSize, obj.fill, obj.text, isEditing]); // Depend on obj.text
+
+  // Update internal textValue when obj.text changes (e.g., from undo/redo)
+  useEffect(() => {
+    if (!isEditing) {
+      setTextValue(obj.text || "");
+    }
+  }, [obj.text, isEditing]);
+
 
   const startEditing = useCallback(() => {
     if (isDraggingRef.current) return;
     setIsEditing(true);
     
-    // Schedule focus for next frame
     requestAnimationFrame(() => {
       textareaRef.current?.focus();
       textareaRef.current?.select();
@@ -41,7 +47,7 @@ function TextBox({ obj, selected, onSelect, onUpdate }) {
   const stopEditing = useCallback(() => {
     setIsEditing(false);
     if (textValue !== obj.text) {
-      onUpdate(obj.id, { text: textValue });
+      onUpdate(obj.id, { text: textValue }); // Final update to history
     }
   }, [obj.id, obj.text, textValue, onUpdate]);
 
@@ -55,7 +61,6 @@ function TextBox({ obj, selected, onSelect, onUpdate }) {
       const stage = textNode.getStage();
       if (!stage) return;
 
-      // Get text node position and dimensions
       const absPos = textNode.getAbsolutePosition();
       const scale = textNode.getAbsoluteScale();
       
@@ -63,7 +68,7 @@ function TextBox({ obj, selected, onSelect, onUpdate }) {
       const stageRect = stageContainer.getBoundingClientRect();
 
       setTextareaStyle({
-        position: 'fixed', // Use fixed positioning relative to viewport
+        position: 'fixed', 
         top: `${stageRect.top + absPos.y}px`,
         left: `${stageRect.left + absPos.x}px`,
         width: `${(obj.width || 200) * scale.x}px`,
@@ -83,22 +88,20 @@ function TextBox({ obj, selected, onSelect, onUpdate }) {
         minHeight: '40px',
       });
 
-      // Only update on animation frame
       rafId = requestAnimationFrame(updatePosition);
     };
 
     rafId = requestAnimationFrame(updatePosition);
     return () => cancelAnimationFrame(rafId);
-  }, [isEditing, obj.width, obj.fontSize, selected, obj.x, obj.y]); // Added obj.x/y to dependencies
+  }, [isEditing, obj.width, obj.fontSize, selected, obj.x, obj.y]); 
 
   // Auto-resize textarea when text changes
   useEffect(() => {
     if (!isEditing || !textareaRef.current) return;
-
     const textarea = textareaRef.current;
     textarea.style.height = 'auto';
     textarea.style.height = textarea.scrollHeight + 'px';
-  }, [textValue, isEditing]);
+  }, [textValue, isEditing, textareaStyle.width]); // Also update on width change
 
   // Close editor when deselected
   useEffect(() => {
@@ -118,20 +121,30 @@ function TextBox({ obj, selected, onSelect, onUpdate }) {
     }
   }, [stopEditing]);
 
-  // Handle text changes with auto-resize
+  // Handle text changes with auto-resize and live update
   const handleTextChange = useCallback((e) => {
     const newText = e.target.value;
     setTextValue(newText);
-  }, []);
+    onLiveUpdate(obj.id, { text: newText }); // Live update
+  }, [obj.id, onLiveUpdate]);
 
   // Handle drag end
   const handleDragEnd = useCallback((e) => {
     isDraggingRef.current = false;
-    onUpdate(obj.id, { 
+    onUpdate(obj.id, { // Final history update
       x: e.target.x(), 
       y: e.target.y() 
     });
   }, [obj.id, onUpdate]);
+  
+  // Handle drag move
+  const handleDragMove = useCallback((e) => {
+     onLiveUpdate(obj.id, { // Live update
+      x: e.target.x(), 
+      y: e.target.y() 
+    });
+  }, [obj.id, onLiveUpdate]);
+
 
   // Handle click
   const handleClick = useCallback((e) => {
@@ -163,11 +176,7 @@ function TextBox({ obj, selected, onSelect, onUpdate }) {
       {isEditing && (
         <textarea
           ref={textareaRef}
-          
-          // --- FIX: Corrected className ---
           className="k-textarea" 
-          // --- END FIX ---
-
           style={textareaStyle}
           value={textValue}
           onChange={handleTextChange}
@@ -182,6 +191,7 @@ function TextBox({ obj, selected, onSelect, onUpdate }) {
         x={obj.x}
         y={obj.y}
         width={obj.width || 200}
+        height={obj.height || 'auto'}
         text={textValue}
         fontSize={obj.fontSize || 24}
         fill={obj.fill || "#1F2937"}
@@ -195,6 +205,7 @@ function TextBox({ obj, selected, onSelect, onUpdate }) {
         onClick={handleClick}
         onDblClick={startEditing}
         onDragStart={handleDragStart}
+        onDragMove={handleDragMove} // Use live update
         onDragEnd={handleDragEnd}
         wrap="word"
         visible={!isEditing} // Hide Konva text when editing
@@ -222,6 +233,7 @@ const areEqual = (prevProps, nextProps) => {
   // Check if event handlers changed
   if (prevProps.onSelect !== nextProps.onSelect) return false;
   if (prevProps.onUpdate !== nextProps.onUpdate) return false;
+  if (prevProps.onLiveUpdate !== nextProps.onLiveUpdate) return false;
   
   return true;
 };

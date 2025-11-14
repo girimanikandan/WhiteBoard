@@ -16,7 +16,7 @@ function Toolbar({
   mode,
   setMode,
   onColorChange,
-  onImageUpload,
+  onImageUpload, // This prop IS the file handler function from BoardCanvas
   onUndo,
   onRedo,
   onZoomIn,
@@ -25,14 +25,22 @@ function Toolbar({
   canUndo = true,
   canRedo = true,
 }) {
+  // This ref is for the file input *within* this component
   const fileInputRef = useRef();
 
-  const handleImageUpload = useCallback(() => {
+  // This handler just clicks the hidden file input
+  const handleImageButtonClick = useCallback(() => {
     fileInputRef.current?.click();
   }, []);
 
+  // This handler gets the file event and passes it to the prop
+  // which is the onImageUpload function from BoardCanvas
   const handleFileSelect = useCallback((e) => {
     onImageUpload(e);
+    // Clear the input value so the same file can be uploaded again
+    if (fileInputRef.current) {
+      fileInputRef.current.value = null;
+    }
   }, [onImageUpload]);
 
   return (
@@ -123,19 +131,20 @@ function Toolbar({
 
       {/* Media */}
       <button
-        onClick={handleImageUpload}
+        onClick={handleImageButtonClick} // Click the button
         title="Upload image"
         className="px-3 py-2 rounded-lg border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 transition-all font-medium text-sm"
       >
         🖼️ Image
       </button>
 
+      {/* This input is hidden. It is clicked by the button above. */}
       <input
         type="file"
         ref={fileInputRef}
         className="hidden"
         accept="image/*"
-        onChange={handleFileSelect}
+        onChange={handleFileSelect} // When file is selected, call handler
       />
 
       <div className="w-px h-6 bg-gray-300 mx-1" />

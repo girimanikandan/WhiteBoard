@@ -1,6 +1,6 @@
 import React, { useMemo } from "react";
 import { Arrow as KArrow, Circle } from "react-konva";
-import { connectPoints } from "../../../utils/arrowHelpers";
+import { connectPoints } from "../../../utils/arrowHelpers.js";
 
 function Arrow({
   obj,
@@ -24,17 +24,21 @@ function Arrow({
         points={pts}
         stroke={selected ? "#ff2d55" : obj.stroke}
         fill={selected ? "#ff2d55" : obj.stroke}
-        strokeWidth={selected ? 4 : obj.strokeWidth}
+        strokeWidth={selected ? 4 : (obj.strokeWidth || 3)}
         pointerLength={12}
         pointerWidth={12}
         onClick={(e) => {
           e.cancelBubble = true;
           onSelect([obj.id]);
         }}
+        onTap={(e) => { // Add tap for mobile
+          e.cancelBubble = true;
+          onSelect([obj.id]);
+        }}
         hitStrokeWidth={20}
       />
 
-      {/* ---------- START RECONNECT HANDLE ---------- */}
+      {/* ---------- START RECONNECT HANDLE (FIXED) ---------- */}
       {selected && (
         <Circle
           x={sx}
@@ -44,11 +48,17 @@ function Arrow({
           stroke="#ff2d55"
           strokeWidth={2}
           draggable
-          onDragStart={() => onReconnectStart("start")}
+          onDragStart={(e) => {
+            e.cancelBubble = true; // Stop stage from dragging
+            // Pass the exact handle position
+            onReconnectStart("start", { x: sx, y: sy });
+          }}
+          // Prevent drag end from firing on the stage
+          onDragEnd={(e) => e.cancelBubble = true}
         />
       )}
 
-      {/* ---------- END RECONNECT HANDLE ---------- */}
+      {/* ---------- END RECONNECT HANDLE (FIXED) ---------- */}
       {selected && (
         <Circle
           x={ex}
@@ -58,7 +68,13 @@ function Arrow({
           stroke="#ff2d55"
           strokeWidth={2}
           draggable
-          onDragStart={() => onReconnectStart("end")}
+          onDragStart={(e) => {
+            e.cancelBubble = true; // Stop stage from dragging
+            // Pass the exact handle position
+            onReconnectStart("end", { x: ex, y: ey });
+          }}
+          // Prevent drag end from firing on the stage
+          onDragEnd={(e) => e.cancelBubble = true}
         />
       )}
     </>

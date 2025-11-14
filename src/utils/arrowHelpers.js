@@ -3,21 +3,24 @@
 export function getCenter(o) {
   if (!o) return { x: 0, y: 0 };
 
-  if (o.type === "sticky" || o.type === "rect") {
-    return { x: o.x + o.width / 2, y: o.y + o.height / 2 };
+  if (o.type === "sticky" || o.type === "rect" || o.type === "text" || o.type === "image") {
+    return { x: o.x + (o.width || 0) / 2, y: o.y + (o.height || 0) / 2 };
   }
 
   if (o.type === "circle") {
     return { x: o.x, y: o.y };
   }
-
-  return { x: o.x, y: o.y };
+  
+  // Fallback for "point" or unknown
+  return { x: o.x || 0, y: o.y || 0 };
 }
 
 // ---- rectangle intersection (fast version) ----
 function intersectRect(cx, cy, tx, ty, rect) {
   const dx = tx - cx;
   const dy = ty - cy;
+  
+  if (dx === 0 && dy === 0) return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 }; // Point is center, return center
 
   const left = rect.x;
   const right = rect.x + rect.width;
@@ -46,7 +49,7 @@ function intersectRect(cx, cy, tx, ty, rect) {
     if (t4 > 0 && x4 >= left && x4 <= right) t.push({ t: t4, x: x4, y: bottom });
   }
 
-  if (t.length === 0) return { x: cx, y: cy };
+  if (t.length === 0) return { x: cx, y: cy }; // No intersection, return center (shouldn't happen if target is outside)
 
   t.sort((a, b) => a.t - b.t);
   return t[0];
@@ -57,7 +60,7 @@ function intersectCircle(cx, cy, tx, ty, r) {
   const dx = tx - cx;
   const dy = ty - cy;
   const len = Math.hypot(dx, dy);
-  if (len === 0) return { x: cx, y: cy };
+  if (len === 0) return { x: cx, y: cy }; // Point is center
 
   const ux = dx / len;
   const uy = dy / len;
@@ -74,7 +77,8 @@ export function connectPoints(start, end) {
 
   let p1, p2;
 
-  if (start.type === "sticky" || start.type === "rect") {
+  // Calculate Start Point (p1)
+  if (start.type === "sticky" || start.type === "rect" || start.type === "text" || start.type === "image") {
     p1 = intersectRect(cs.x, cs.y, ce.x, ce.y, {
       x: start.x,
       y: start.y,
@@ -84,10 +88,11 @@ export function connectPoints(start, end) {
   } else if (start.type === "circle") {
     p1 = intersectCircle(cs.x, cs.y, ce.x, ce.y, start.radius);
   } else {
-    p1 = cs;
+    p1 = cs; // Fallback for point or unknown
   }
 
-  if (end.type === "sticky" || end.type === "rect") {
+  // Calculate End Point (p2)
+  if (end.type === "sticky" || end.type === "rect" || end.type === "text" || end.type === "image") {
     p2 = intersectRect(ce.x, ce.y, cs.x, cs.y, {
       x: end.x,
       y: end.y,
@@ -97,7 +102,7 @@ export function connectPoints(start, end) {
   } else if (end.type === "circle") {
     p2 = intersectCircle(ce.x, ce.y, cs.x, cs.y, end.radius);
   } else {
-    p2 = ce;
+    p2 = ce; // Fallback for point or unknown
   }
 
   return [p1.x, p1.y, p2.x, p2.y];

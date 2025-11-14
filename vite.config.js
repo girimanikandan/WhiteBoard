@@ -10,4 +10,10 @@ export default defineConfig({
       },
     }),
   ],
+  // --- ADD THIS SECTION ---
+  // Fix for Konva/esbuild issue
+  resolve: {
+    mainFields: ['browser', 'module', 'main'],
+  },
+  // --- END ---
 })
