@@ -2,19 +2,20 @@
 import React, { useEffect, useRef, useMemo } from "react";
 import { Transformer } from "react-konva";
 
-import StickyNote from "./tools/StickyNote";
-import Shape from "./tools/Shape";
-import Freehand from "./tools/Freehand";
-import TextBox from "./tools/TextBox";
-import Arrow from "./tools/Arrow";
-import ImageObject from "./tools/ImageObject";
-import Line from "./tools/Line";
+import StickyNote from "./tools/StickyNote.jsx";
+import Shape from "./tools/Shape.jsx";
+import Freehand from "./tools/Freehand.jsx";
+import TextBox from "./tools/TextBox.jsx";
+import Arrow from "./tools/Arrow.jsx";
+import ImageObject from "./tools/ImageObject.jsx";
+import Line from "./tools/Line.jsx";
 
 function LayerObjects({
   objects = {},
   selectedIds = [],
   onSelect,
-  onUpdate,
+  onUpdate, // For final history update
+  onLiveUpdate, // For smooth dragging
   layerRef,
   onStartReconnect,   // REQUIRED for reconnect feature
 }) {
@@ -47,6 +48,7 @@ function LayerObjects({
       selected: isSelected,
       onSelect,
       onUpdate,
+      onLiveUpdate, // Pass live update handler
     };
 
     switch (obj.type) {
@@ -78,8 +80,8 @@ function LayerObjects({
             objectsMap={objectsMap}
             onSelect={onSelect}
             onUpdate={onUpdate}
-            onStartReconnect={(endpoint) =>
-              onStartReconnect(obj.id, endpoint)
+            onStartReconnect={(endpoint, handlePos) => // Pass handlePos
+              onStartReconnect(obj.id, endpoint, handlePos)
             }
           />
         );

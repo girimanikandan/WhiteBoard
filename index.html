@@ -44,6 +44,7 @@
     <!-- Preload Critical Resources -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <!-- This line preloads the stylesheet, which is the correct way -->
     <link rel="preload" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" as="style" onload="this.onload=null;this.rel='stylesheet'">
     
     <!-- CSS -->
@@ -64,8 +65,7 @@
       connect-src 'self' ws: wss:;
     ">
     
-    <!-- Preload Critical Fonts -->
-    <link rel="preload" as="font" type="font/woff2" href="https://fonts.gstatic.com/s/inter/v12/UcCO3FwrK3iLTeHuS_fvQtMwCp50KnMw2boKoduKmMEVuLyfAZ9hiA.woff2" crossorigin>
+    <!-- Preload Critical Fonts (REMOVED redundant .woff2 preload) -->
     
     <!-- Performance Hints -->
     <link rel="dns-prefetch" href="https://fonts.googleapis.com">
@@ -447,7 +447,7 @@
       // Network status handling
       function setupNetworkHandling() {
         const offlineIndicator = document.getElementById('offlineIndicator');
-        
+
         window.addEventListener('online', () => {
           document.documentElement.classList.remove('offline');
           console.log('Application is online');
@@ -457,7 +457,7 @@
             window.showReconnectedMessage();
           }
         });
-        
+
         window.addEventListener('offline', () => {
           document.documentElement.classList.add('offline');
           console.log('Application is offline');
