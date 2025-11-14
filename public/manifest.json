@@ -1,6 +1,6 @@
 {
-  "name": "Miro Clone - Collaborative Whiteboard",
-  "short_name": "Miro Clone",
+  "name": "ClusterBoard - Collaborative Whiteboard",
+  "short_name": "ClusterBoard",
   "description": "Real-time collaborative whiteboard with drawing and team collaboration",
   "start_url": "/",
   "display": "standalone",

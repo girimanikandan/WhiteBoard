@@ -34,7 +34,7 @@ export default function BoardPage() {
       {/* Top Navigation */}
       <div className="h-16 px-6 bg-white border-b border-gray-200 flex items-center justify-between shadow-sm">
         <div className="flex items-center gap-4">
-          <h1 className="text-xl font-bold text-gray-800">Miro Clone</h1>
+          <h1 className="text-xl font-bold text-gray-800">ClusterBoard</h1>
           <div className="px-3 py-1 bg-blue-500 text-white rounded-full text-sm font-medium">
             {Object.keys(objects).length} objects
           </div>
@@ -63,9 +63,6 @@ export default function BoardPage() {
 
       {/* Main Content */}
       <div className="flex-1 relative">
-        {/* ✅ Add Toolbar */}
-     
-
         <BoardCanvas />
       </div>
 
