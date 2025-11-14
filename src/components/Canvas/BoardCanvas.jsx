@@ -375,6 +375,12 @@ export default function BoardCanvas() {
     [createObject]
   );
 
+  // --- START: ADD LIVE UPDATE HANDLER ---
+  const handleLiveUpdate = useCallback((id, updates) => {
+    dispatch({ type: ActionTypes.UPDATE_OBJECT_LIVE, payload: { id, updates } });
+  }, [dispatch]);
+  // --- END: ADD LIVE UPDATE HANDLER ---
+
   // --- FIX 1: Add handlers for Toolbar ---
   const handleUndo = useCallback(() => {
     dispatch({ type: ActionTypes.UNDO });
@@ -449,6 +455,9 @@ export default function BoardCanvas() {
             onUpdate={(id, updates) =>
               dispatch({ type: ActionTypes.UPDATE_OBJECT, payload: { id, updates } })
             }
+            // --- START: PASS LIVE UPDATE PROP ---
+            onLiveUpdate={handleLiveUpdate}
+            // --- END: PASS LIVE UPDATE PROP ---
             onStartReconnect={handleStartReconnect}
           />
 

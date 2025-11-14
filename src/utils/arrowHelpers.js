@@ -1,20 +1,23 @@
 // --------- Ultra-optimized connector helpers ---------
 
+// --------- Ultra-optimized connector helpers ---------
+
 export function getCenter(o) {
   if (!o) return { x: 0, y: 0 };
 
-  if (o.type === "sticky" || o.type === "rect" || o.type === "text" || o.type === "image") {
+  // MODIFIED: Removed "image" from this block
+  if (o.type === "sticky" || o.type === "rect" || o.type === "text") {
     return { x: o.x + (o.width || 0) / 2, y: o.y + (o.height || 0) / 2 };
   }
 
-  if (o.type === "circle") {
+  // MODIFIED: Added "image" to this block (since its x/y is already the center)
+  if (o.type === "circle" || o.type === "image") {
     return { x: o.x, y: o.y };
   }
   
   // Fallback for "point" or unknown
   return { x: o.x || 0, y: o.y || 0 };
 }
-
 // ---- rectangle intersection (fast version) ----
 function intersectRect(cx, cy, tx, ty, rect) {
   const dx = tx - cx;

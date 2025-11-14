@@ -9,7 +9,8 @@ const EMOJIS = ["😀", "😍", "👍", "🚀", "💡", "❗"];
 const THROTTLE_MS = 16; // Throttle updates to ~60fps
 // --- END: New Feature (Live Arrow Move) ---
 
-function StickyNote({ obj, selected, onSelect, onUpdate }) {
+// --- FIX: Add onLiveUpdate to props ---
+function StickyNote({ obj, selected, onSelect, onUpdate, onLiveUpdate }) {
   const groupRef = useRef();
   const textRef = useRef();
   const textareaRef = useRef();
@@ -58,11 +59,11 @@ function StickyNote({ obj, selected, onSelect, onUpdate }) {
     setShowToolbar(false);
   }, []);
 
-  // --- START: New Feature (Live Arrow Move) ---
+  // --- START: MODIFIED handleDragMove ---
   // Throttled drag move handler
   const handleDragMove = useCallback((e) => {
-    // --- THIS IS THE FIX: COMMENTED OUT TO PREVENT HISTORY SPAM ---
-    /*
+    // --- THIS IS THE FIX: Uncommented and changed to onLiveUpdate ---
+    
     const now = Date.now();
     if (now - lastUpdateRef.current < THROTTLE_MS) {
       return;
@@ -70,14 +71,17 @@ function StickyNote({ obj, selected, onSelect, onUpdate }) {
     lastUpdateRef.current = now;
 
     const node = e.target;
-    onUpdate(obj.id, {
-      x: node.x(),
-      y: node.y(),
-    });
-    */
+    // --- FIX: Use onLiveUpdate ---
+    if (onLiveUpdate) {
+      onLiveUpdate(obj.id, {
+        x: node.x(),
+        y: node.y(),
+      });
+    }
+    
     // --- END OF FIX ---
-  }, [obj.id, onUpdate]);
-  // --- END: New Feature (Live Arrow Move) ---
+  }, [obj.id, onLiveUpdate, onUpdate]); // --- FIX: Add onLiveUpdate to dependencies ---
+  // --- END: MODIFIED handleDragMove ---
 
   const handleDragEnd = useCallback((e) => {
     if (!isDraggingRef.current) return;
@@ -389,6 +393,8 @@ const areEqual = (prevProps, nextProps) => {
   
   if (prevProps.onSelect !== nextProps.onSelect) return false;
   if (prevProps.onUpdate !== nextProps.onUpdate) return false;
+  // --- FIX: Add check for onLiveUpdate ---
+  if (prevProps.onLiveUpdate !== nextProps.onLiveUpdate) return false;
   
   return true;
 };

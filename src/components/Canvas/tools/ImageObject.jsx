@@ -2,7 +2,8 @@
 import React, { useCallback, useRef, useEffect, useMemo, useState } from "react";
 import { Image as KImage } from "react-konva";
 
-function ImageObject({ obj, selected, onSelect, onUpdate }) {
+// --- FIX: Add onLiveUpdate to props ---
+function ImageObject({ obj, selected, onSelect, onUpdate, onLiveUpdate }) {
   const imageRef = useRef();
   const lastTransformRef = useRef(0);
   const TRANSFORM_THROTTLE_MS = 50;
@@ -10,6 +11,12 @@ function ImageObject({ obj, selected, onSelect, onUpdate }) {
   // Custom image loading state (replaces use-image)
   const [img, setImg] = useState(null);
   const [imgStatus, setImgStatus] = useState('loading'); // 'loading', 'loaded', 'failed'
+
+  // --- START: ADD DRAG STATE AND THROTTLE ---
+  const isDraggingRef = useRef(false);
+  const lastDragUpdateRef = useRef(0);
+  const DRAG_THROTTLE_MS = 16; // ~60fps for dragging
+  // --- END: ADD DRAG STATE AND THROTTLE ---
 
   // Load image effect
   useEffect(() => {
@@ -68,18 +75,52 @@ function ImageObject({ obj, selected, onSelect, onUpdate }) {
 
   // Optimized click handler
   const handleClick = useCallback((e) => {
+    // --- START: ADD DRAG CHECK ---
+    if (isDraggingRef.current) {
+      isDraggingRef.current = false;
+      return;
+    }
+    // --- END: ADD DRAG CHECK ---
     e.cancelBubble = true;
     onSelect(obj.id);
   }, [obj.id, onSelect]);
 
+  // --- START: ADD DRAG HANDLERS ---
+  const handleDragStart = useCallback(() => {
+    isDraggingRef.current = true;
+  }, []);
+
+  const handleDragMove = useCallback((e) => {
+    const now = Date.now();
+    if (now - lastDragUpdateRef.current < DRAG_THROTTLE_MS) {
+      return;
+    }
+    lastDragUpdateRef.current = now;
+
+    const node = e.target;
+    if (onLiveUpdate) {
+      onLiveUpdate(obj.id, {
+        x: node.x(),
+        y: node.y(),
+      });
+    }
+  }, [obj.id, onLiveUpdate]);
+  // --- END: ADD DRAG HANDLERS ---
+
   // Optimized drag handler
   const handleDragEnd = useCallback((e) => {
+    // --- START: ADD DRAG CHECK ---
+    if (!isDraggingRef.current) return;
+    isDraggingRef.current = false;
+    // --- END: ADD DRAG CHECK ---
+
     const node = e.target;
     onUpdate(obj.id, {
       x: node.x(),
       y: node.y(),
     });
   }, [obj.id, onUpdate]);
+
 
   // Throttled transform handler
   const handleTransformEnd = useCallback((e) => {
@@ -126,6 +167,8 @@ function ImageObject({ obj, selected, onSelect, onUpdate }) {
           stroke="#ccc"
           strokeWidth={1}
           listening={false}
+          offsetX={obj.width / 2} // --- FIX: Add offset
+          offsetY={obj.height / 2} // --- FIX: Add offset
         />
       );
     }
@@ -144,13 +187,19 @@ function ImageObject({ obj, selected, onSelect, onUpdate }) {
           listening={true}
           onClick={handleClick}
           draggable
+          // --- FIX: Add drag handlers ---
+          onDragStart={handleDragStart}
+          onDragMove={handleDragMove}
           onDragEnd={handleDragEnd}
+          offsetX={obj.width / 2} // --- FIX: Add offset
+          offsetY={obj.height / 2} // --- FIX: Add offset
         />
       );
     }
     
     return null;
-  }, [imgStatus, obj, handleClick, handleDragEnd]);
+  // --- FIX: Add drag handlers to dependency array ---
+  }, [imgStatus, obj, handleClick, handleDragStart, handleDragMove, handleDragEnd]);
 
   // Selection styling
   const selectionStyle = useMemo(() => {
@@ -197,6 +246,9 @@ function ImageObject({ obj, selected, onSelect, onUpdate }) {
       
       // Event handlers
       onClick={handleClick}
+      // --- FIX: Add drag handlers ---
+      onDragStart={handleDragStart}
+      onDragMove={handleDragMove}
       onDragEnd={handleDragEnd}
       onTransformEnd={handleTransformEnd}
       
@@ -225,6 +277,11 @@ const areEqual = (prevProps, nextProps) => {
   if (prevObj.height !== nextObj.height) return false;
   if (prevObj.rotation !== nextObj.rotation) return false;
   
+  // --- FIX: Add check for event handlers ---
+  if (prevProps.onSelect !== nextProps.onSelect) return false;
+  if (prevProps.onUpdate !== nextProps.onUpdate) return false;
+  if (prevProps.onLiveUpdate !== nextProps.onLiveUpdate) return false;
+
   return true;
 };
 
