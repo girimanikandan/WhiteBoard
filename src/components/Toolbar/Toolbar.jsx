@@ -8,7 +8,7 @@ const TOOL_BUTTONS = [
   { id: "text", icon: "🔤", label: "Text", description: "Add text box" },
   { id: "rect", icon: "▭", label: "Rect", description: "Add rectangle" },
   { id: "circle", icon: "⚪", label: "Circle", description: "Add circle" },
-  { id: "line", icon: "〣", label: "Line", description: "Draw straight line" },
+  { id: "line", icon: "㣣", label: "Line", description: "Draw straight line" },
   { id: "arrow", icon: "➤", label: "Arrow", description: "Connect objects" },
 ];
 
@@ -63,7 +63,7 @@ function Toolbar({
         <input
           type="color"
           className="w-9 h-9 rounded-lg cursor-pointer border border-gray-300 hover:border-gray-400 transition-colors"
-          onChange={onColorChange}
+          onChange={(e) => onColorChange(e.target.value)}
           title="Choose color"
         />
       </div>

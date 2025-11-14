@@ -59,6 +59,27 @@ export default function BoardCanvas() {
     });
   }, []);
 
+  // Handler for color changes from Toolbar
+  const handleColorChange = useCallback((newColor) => {
+    // 1. Update the local color state (for creating new shapes)
+    setSelectedColor(newColor);
+
+    // 2. Update all selected objects
+    if (selectedIds.length > 0) {
+      selectedIds.forEach(id => {
+        const obj = objects[id];
+        
+        // Check if the object is a type that can be filled
+        if (obj && (obj.type === 'rect' || obj.type === 'circle' || obj.type === 'sticky' || obj.type === 'text')) {
+          dispatch({
+            type: ActionTypes.UPDATE_OBJECT,
+            payload: { id: id, updates: { fill: newColor } }
+          });
+        }
+      });
+    }
+  }, [selectedIds, dispatch, objects]);
+
   // Mouse event handlers
   const handleMouseDown = useCallback((e) => {
     const pos = getRelativePointer(stageRef.current); // Use imported helper
@@ -365,7 +386,7 @@ export default function BoardCanvas() {
       <Toolbar
         mode={mode}
         setMode={(m) => dispatch({ type: ActionTypes.SET_MODE, payload: m })}
-        onColorChange={setSelectedColor}
+        onColorChange={handleColorChange}
         onImageUpload={() => fileInputRef.current?.click()}
         onUndo={() => dispatch({ type: ActionTypes.UNDO })}
         onRedo={() => dispatch({ type: ActionTypes.REDO })}

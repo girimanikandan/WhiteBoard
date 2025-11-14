@@ -1,5 +1,41 @@
+// src/components/Canvas/tools/Arrow.jsx
 import React, { useMemo, useCallback } from "react";
 import { Arrow as KonvaArrow } from "react-konva";
+
+// Helper function moved OUTSIDE the component for stable reference
+const getObjectCenter = (object) => {
+  if (!object) return { x: 0, y: 0 };
+  
+  switch (object.type) {
+    // These types use obj.x/y as their center (due to offsetX/Y)
+    case 'sticky':
+    case 'image':
+    case 'circle':
+      return { 
+        x: object.x || 0, 
+        y: object.y || 0 
+      };
+
+    // These types use obj.x/y as top-left
+    case 'rect':
+      return {
+        x: (object.x || 0) + (object.width / 2 || 0),
+        y: (object.y || 0) + (object.height / 2 || 0)
+      };
+    case 'text':
+      return {
+        x: (object.x || 0) + (object.width / 2 || 50),
+        y: (object.y || 0) + 12 // Approx center for text
+      };
+
+    // Fallback for line, freehand, etc.
+    default:
+      return { 
+        x: object.x || 0, 
+        y: object.y || 0 
+      };
+  }
+};
 
 const Arrow = React.memo(function Arrow({ 
   obj, 
@@ -8,41 +44,6 @@ const Arrow = React.memo(function Arrow({
   onUpdate,
   objectsMap = {} // Default to empty object
 }) {
-  // Helper function to get object center
-  // This logic is now corrected for different object types
-  const getObjectCenter = (object) => {
-    if (!object) return { x: 0, y: 0 };
-    
-    switch (object.type) {
-      // These types use obj.x/y as their center (due to offsetX/Y)
-      case 'sticky':
-      case 'image':
-      case 'circle':
-        return { 
-          x: object.x || 0, 
-          y: object.y || 0 
-        };
-
-      // These types use obj.x/y as top-left
-      case 'rect':
-        return {
-          x: (object.x || 0) + (object.width / 2 || 0),
-          y: (object.y || 0) + (object.height / 2 || 0)
-        };
-      case 'text':
-        return {
-          x: (object.x || 0) + (object.width / 2 || 50),
-          y: (object.y || 0) + 12 // Approx center for text
-        };
-
-      // Fallback for line, freehand, etc.
-      default:
-        return { 
-          x: object.x || 0, 
-          y: object.y || 0 
-        };
-    }
-  };
 
   // Calculate connection points based on connected objects
   const points = useMemo(() => {
@@ -69,7 +70,8 @@ const Arrow = React.memo(function Arrow({
 
     // Fallback to default points
     return obj.points || [obj.x || 0, obj.y || 0, (obj.x || 0) + 100, (obj.y || 0) + 100];
-  }, [obj.startId, obj.endId, obj.points, obj.x, obj.y, objectsMap, getObjectCenter]); // Added getObjectCenter to dependency array
+  // getObjectCenter removed from dependency array
+  }, [obj.startId, obj.endId, obj.points, obj.x, obj.y, objectsMap]);
 
 
   const handleClick = useCallback((e) => {
@@ -131,31 +133,41 @@ const Arrow = React.memo(function Arrow({
     />
   );
 }, (prevProps, nextProps) => {
+  // --- CORRECTED MEMO FUNCTION ---
   // Custom comparison for memoization
   if (prevProps.obj.id !== nextProps.obj.id) return false;
   if (prevProps.selected !== nextProps.selected) return false;
-  if (prevProps.obj.stroke !== nextProps.obj.stroke) return false;
-  if (prevProps.obj.strokeWidth !== nextProps.obj.strokeWidth) return false;
-  if (prevProps.obj.startId !== nextProps.obj.startId) return false;
-  if (prevProps.obj.endId !== nextProps.obj.endId) return false;
-  if (prevProps.obj.x !== nextProps.obj.x) return false;
-  if (prevProps.obj.y !== nextProps.obj.y) return false;
+
+  const prevObj = prevProps.obj;
+  const nextObj = nextProps.obj;
+
+  if (prevObj.stroke !== nextObj.stroke) return false;
+  if (prevObj.strokeWidth !== nextObj.strokeWidth) return false;
+  if (prevObj.startId !== nextObj.startId) return false;
+  if (prevObj.endId !== nextObj.endId) return false;
   
   // Check if connected objects' positions have changed
   const prevStart = prevProps.objectsMap[prevProps.obj.startId];
   const nextStart = nextProps.objectsMap[nextProps.obj.startId];
-  if (prevStart && nextStart && (prevStart.x !== nextStart.x || prevStart.y !== nextStart.y)) {
+  if (prevStart?.x !== nextStart?.x || prevStart?.y !== nextStart?.y) {
     return false;
   }
   
   const prevEnd = prevProps.objectsMap[prevProps.obj.endId];
   const nextEnd = nextProps.objectsMap[nextProps.obj.endId];
-  if (prevEnd && nextEnd && (prevEnd.x !== nextEnd.x || prevEnd.y !== nextEnd.y)) {
+  if (prevEnd?.x !== nextEnd?.x || prevEnd?.y !== nextEnd?.y) {
     return false;
   }
 
-  // A full map comparison is too slow, so we check specific object props
-  if (prevStart !== nextStart || prevEnd !== nextEnd) return false;
+  // Check if component is switching from/to manual points
+  if ((prevObj.points && !nextObj.points) || (!prevObj.points && nextObj.points)) {
+    return false;
+  }
+
+  // If not connected, check manual position
+  if (!prevObj.startId) {
+    if (prevObj.x !== nextObj.x || prevObj.y !== nextObj.y) return false;
+  }
   
   return true;
 });
