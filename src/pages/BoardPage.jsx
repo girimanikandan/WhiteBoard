@@ -3,43 +3,13 @@ import React, { useState, useCallback } from "react";
 import { useParams } from "react-router-dom";
 
 import BoardCanvas from "../components/Canvas/BoardCanvas";
-import ShareModal from "../components/ShareModal";
-import Toolbar from "../components/Toolbar/Toolbar";   // ✅ import Toolbar
+import ShareModal from "../components/ShareModal"; 
 import { useAppState } from "../context/AppProvider";
 
 export default function BoardPage() {
   const { boardId } = useParams();
   const { objects, user } = useAppState();
   const [showShareModal, setShowShareModal] = useState(false);
-
-  // --- Toolbar handlers ---
-  const [mode, setMode] = useState("select");
-  const [undoStack, setUndoStack] = useState([]);
-  const [redoStack, setRedoStack] = useState([]);
-
-  const handleUndo = () => {
-    if (undoStack.length > 0) {
-      const last = undoStack.pop();
-      setRedoStack([...redoStack, last]);
-      setUndoStack([...undoStack]);
-      console.log("Undo:", last);
-    }
-  };
-
-  const handleRedo = () => {
-    if (redoStack.length > 0) {
-      const last = redoStack.pop();
-      setUndoStack([...undoStack, last]);
-      setRedoStack([...redoStack]);
-      console.log("Redo:", last);
-    }
-  };
-
-  const handleZoomIn = () => console.log("Zoom In");
-  const handleZoomOut = () => console.log("Zoom Out");
-  const handleClearBoard = () => console.log("Clear Board");
-  const handleColorChange = (e) => console.log("Color:", e.target.value);
-  const handleImageUpload = (e) => console.log("Image:", e.target.files[0]);
 
   // --- Export logic ---
   const handleExport = useCallback(() => {
@@ -94,19 +64,7 @@ export default function BoardPage() {
       {/* Main Content */}
       <div className="flex-1 relative">
         {/* ✅ Add Toolbar */}
-        <Toolbar
-          mode={mode}
-          setMode={setMode}
-          onColorChange={handleColorChange}
-          onImageUpload={handleImageUpload}
-          onUndo={handleUndo}
-          onRedo={handleRedo}
-          onZoomIn={handleZoomIn}
-          onZoomOut={handleZoomOut}
-          onClearBoard={handleClearBoard}
-          canUndo={undoStack.length > 0}
-          canRedo={redoStack.length > 0}
-        />
+     
 
         <BoardCanvas />
       </div>

@@ -1,5 +1,6 @@
 // src/context/AppProvider.jsx
 import React, { createContext, useContext, useReducer, useEffect, useRef } from "react";
+import { uuid } from "../utils/uuid"; // Import uuid
 
 const AppStateContext = createContext();
 const AppDispatchContext = createContext();
@@ -11,7 +12,7 @@ const initialState = {
   boardId: "default",
   remoteCursors: [],
   user: {
-    id: 'user-' + Math.random().toString(36).substr(2, 9),
+    id: 'user-' + uuid(), // Use uuid()
     name: "Guest-" + Math.floor(Math.random() * 999),
   },
   history: [],

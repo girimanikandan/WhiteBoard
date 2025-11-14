@@ -10,7 +10,7 @@ import ImageObject from "./tools/ImageObject";
 import Line from "./tools/Line";
 
 function LayerObjects({
-  objects = [],
+  objects = {}, // Changed: Default to an empty object
   selectedIds = [],
   onSelect,
   onUpdate,
@@ -54,10 +54,8 @@ function LayerObjects({
       case "line":
         return <Line {...commonProps} />;
       case "arrow":
-        return <Arrow {...commonProps} objectsMap={objects.reduce((acc, obj) => {
-          acc[obj.id] = obj;
-          return acc;
-        }, {})} />;
+        // Changed: Pass the objects map directly
+        return <Arrow {...commonProps} objectsMap={objects} />;
       case "image":
         return <ImageObject {...commonProps} />;
       default:
@@ -68,7 +66,8 @@ function LayerObjects({
 
   return (
     <>
-      {objects.map(renderObject)}
+      {/* Changed: Iterate over Object.values() */}
+      {Object.values(objects).map(renderObject)}
       <Transformer 
         ref={transformerRef}
         rotateEnabled={true}

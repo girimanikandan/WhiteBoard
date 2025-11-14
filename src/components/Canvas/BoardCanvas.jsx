@@ -1,10 +1,11 @@
 // src/components/Canvas/BoardCanvas.jsx
 import React, { useRef, useState, useCallback, useEffect } from "react";
 import { Stage, Layer, Rect, Line } from "react-konva";
-
+import { getRelativePointer } from "../../utils/konvaHelpers";
 import LayerObjects from "./LayerObjects";
 import Toolbar from "../Toolbar/Toolbar";
 import { useAppState, useAppDispatch, ActionTypes } from "../../context/AppProvider";
+import { uuid } from "../../utils/uuid"; // Added import
 
 export default function BoardCanvas() {
   const stageRef = useRef();
@@ -16,45 +17,32 @@ export default function BoardCanvas() {
   const [previewShape, setPreviewShape] = useState(null);
   const [selectedColor, setSelectedColor] = useState("#000000");
   const [selection, setSelection] = useState({ start: null, active: false });
-  const [viewport, setViewport] = useState({ 
-    scale: 1, 
-    x: 0, 
-    y: 0 
+  const [viewport, setViewport] = useState({
+    scale: 1,
+    x: 0,
+    y: 0
   });
 
   const { objects, selectedIds, mode } = useAppState();
   const dispatch = useAppDispatch();
 
-  // Get relative pointer position with performance optimization
-  const getRelativePointer = useCallback((stage) => {
-    if (!stage) return { x: 0, y: 0 };
-    const pointer = stage.getPointerPosition();
-    if (!pointer) return { x: 0, y: 0 };
-    
-    const scale = stage.scaleX();
-    return {
-      x: (pointer.x - stage.x()) / scale,
-      y: (pointer.y - stage.y()) / scale,
-    };
-  }, []);
-
   // Create object helper with validation
   const createObject = useCallback((type, props) => {
-    const id = 'obj-' + Math.random().toString(36).substr(2, 9);
-    const obj = { 
-      id, 
-      type, 
+    const id = 'obj-' + uuid(); // Use uuid()
+    const obj = {
+      id,
+      type,
       x: props.x || 0,
       y: props.y || 0,
-      ...props 
+      ...props
     };
-    
+
     // Validate required properties based on type
     if (type === "freehand" && (!props.points || props.points.length < 4)) {
       console.warn("Freehand object requires at least 4 points");
       return null;
     }
-    
+
     dispatch({ type: ActionTypes.ADD_OBJECT, payload: obj });
     return id;
   }, [dispatch]);
@@ -63,7 +51,7 @@ export default function BoardCanvas() {
   const updateViewport = useCallback(() => {
     const stage = stageRef.current;
     if (!stage) return;
-    
+
     setViewport({
       scale: stage.scaleX(),
       x: stage.x(),
@@ -73,8 +61,7 @@ export default function BoardCanvas() {
 
   // Mouse event handlers
   const handleMouseDown = useCallback((e) => {
-    const stage = stageRef.current;
-    const pos = getRelativePointer(stage);
+    const pos = getRelativePointer(stageRef.current); // Use imported helper
     if (!pos) return;
 
     // Prevent default behavior
@@ -101,7 +88,7 @@ export default function BoardCanvas() {
         fill: "#FFF59D",
         text: "New Note",
       }),
-      
+
       text: () => createObject("text", {
         x: pos.x,
         y: pos.y,
@@ -110,7 +97,7 @@ export default function BoardCanvas() {
         fill: selectedColor,
         width: 200,
       }),
-      
+
       rect: () => createObject("rect", {
         x: pos.x,
         y: pos.y,
@@ -118,14 +105,14 @@ export default function BoardCanvas() {
         height: 100,
         fill: selectedColor || "#D1D1D1",
       }),
-      
+
       circle: () => createObject("circle", {
         x: pos.x,
         y: pos.y,
         radius: 50,
         fill: selectedColor || "#8ECAE6",
       }),
-      
+
       arrow: () => {
         // Arrow tool requires two clicks - start implementation
         console.log("Arrow tool clicked at:", pos);
@@ -153,15 +140,14 @@ export default function BoardCanvas() {
     }
 
     // Selection mode
-    if (e.target === stage) {
+    if (e.target === stageRef.current) { // Check against stageRef
       setSelection({ start: pos, active: true });
       dispatch({ type: ActionTypes.SET_SELECTED, payload: [] });
     }
-  }, [mode, selectedColor, createObject, getRelativePointer, dispatch]);
+  }, [mode, selectedColor, createObject, dispatch]);
 
   const handleMouseMove = useCallback((e) => {
-    const stage = stageRef.current;
-    const pos = getRelativePointer(stage);
+    const pos = getRelativePointer(stageRef.current); // Use imported helper
     if (!pos) return;
 
     // Drawing with performance optimization
@@ -172,11 +158,11 @@ export default function BoardCanvas() {
         // Only add point if it's significantly different from last point
         const lastX = newPoints[newPoints.length - 2];
         const lastY = newPoints[newPoints.length - 1];
-        
+
         if (Math.abs(pos.x - lastX) > 2 || Math.abs(pos.y - lastY) > 2) {
           newPoints.push(pos.x, pos.y);
         }
-        
+
         return { ...prev, points: newPoints };
       });
       return;
@@ -195,7 +181,7 @@ export default function BoardCanvas() {
     if (selection.active && selection.start) {
       const sel = selectionRectRef.current;
       const start = selection.start;
-      
+
       sel.position({
         x: Math.min(pos.x, start.x),
         y: Math.min(pos.y, start.y),
@@ -203,11 +189,11 @@ export default function BoardCanvas() {
       sel.width(Math.abs(pos.x - start.x));
       sel.height(Math.abs(pos.y - start.y));
       sel.visible(true);
-      
+
       // Batch draw for performance
       layerRef.current?.batchDraw();
     }
-  }, [mode, currentLine, previewShape, selection, getRelativePointer]);
+  }, [mode, currentLine, previewShape, selection]); // Removed getRelativePointer from deps
 
   const handleMouseUp = useCallback(() => {
     // Finish drawing
@@ -229,7 +215,7 @@ export default function BoardCanvas() {
       // Only create line if it has meaningful length
       const [x1, y1, x2, y2] = previewShape.points;
       const distance = Math.sqrt(Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2));
-      
+
       if (distance > 10) { // Minimum line length
         createObject("line", {
           points: previewShape.points,
@@ -237,7 +223,7 @@ export default function BoardCanvas() {
           strokeWidth: previewShape.strokeWidth,
         });
       }
-      
+
       setPreviewShape(null);
       dispatch({ type: ActionTypes.SET_MODE, payload: "select" });
       return;
@@ -281,12 +267,12 @@ export default function BoardCanvas() {
         });
       }
     };
-    
+
     reader.onerror = () => {
       alert('Error reading image file');
       console.error('FileReader error:', reader.error);
     };
-    
+
     reader.readAsDataURL(file);
 
     // Reset file input
@@ -302,7 +288,7 @@ export default function BoardCanvas() {
 
     const oldScale = stage.scaleX();
     const pointer = fixedPoint || stage.getPointerPosition();
-    
+
     if (!pointer) return;
 
     const mousePoint = {
@@ -312,7 +298,7 @@ export default function BoardCanvas() {
 
     // Constrain zoom levels
     const newScale = Math.max(0.05, Math.min(20, oldScale * scaleBy));
-    
+
     // Only zoom if scale actually changes
     if (Math.abs(newScale - oldScale) > 0.001) {
       stage.scale({ x: newScale, y: newScale });
@@ -321,7 +307,7 @@ export default function BoardCanvas() {
         x: pointer.x - mousePoint.x * newScale,
         y: pointer.y - mousePoint.y * newScale,
       };
-      
+
       stage.position(newPos);
       stage.batchDraw();
       updateViewport();
@@ -342,13 +328,13 @@ export default function BoardCanvas() {
         e.preventDefault();
         dispatch({ type: ActionTypes.UNDO });
       }
-      
+
       // Ctrl/Cmd + Shift + Z or Ctrl/Cmd + Y for redo
       if ((e.ctrlKey || e.metaKey) && (e.shiftKey && e.key === 'z') || e.key === 'y') {
         e.preventDefault();
         dispatch({ type: ActionTypes.REDO });
       }
-      
+
       // Delete key to remove selected objects
       if (e.key === 'Delete' || e.key === 'Backspace') {
         e.preventDefault();
@@ -356,7 +342,7 @@ export default function BoardCanvas() {
           dispatch({ type: ActionTypes.DELETE_OBJECT, payload: id });
         });
       }
-      
+
       // Escape to clear selection
       if (e.key === 'Escape') {
         dispatch({ type: ActionTypes.SET_SELECTED, payload: [] });
@@ -384,7 +370,7 @@ export default function BoardCanvas() {
         onUndo={() => dispatch({ type: ActionTypes.UNDO })}
         onRedo={() => dispatch({ type: ActionTypes.REDO })}
         onZoomIn={() => zoomAt(1.2)}
-        onZoomOut={() => zoomAt(1/1.2)}
+        onZoomOut={() => zoomAt(1 / 1.2)}
         onClearBoard={() => {
           if (window.confirm("Are you sure you want to clear the entire board? This action cannot be undone.")) {
             dispatch({ type: ActionTypes.CLEAR_BOARD });
@@ -417,12 +403,12 @@ export default function BoardCanvas() {
         <Layer ref={layerRef}>
           {/* Render all objects */}
           <LayerObjects
-            objects={Object.values(objects)}
+            objects={objects}
             selectedIds={selectedIds}
             onSelect={(ids) => dispatch({ type: ActionTypes.SET_SELECTED, payload: ids })}
-            onUpdate={(id, updates) => dispatch({ 
-              type: ActionTypes.UPDATE_OBJECT, 
-              payload: { id, updates } 
+            onUpdate={(id, updates) => dispatch({
+              type: ActionTypes.UPDATE_OBJECT,
+              payload: { id, updates }
             })}
             layerRef={layerRef}
             viewportScale={viewport.scale}
