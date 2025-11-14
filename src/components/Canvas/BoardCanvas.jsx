@@ -44,7 +44,8 @@ export default function BoardCanvas() {
     startPos: null
   });
 
-  const { objects, selectedIds, mode } = useAppState();
+  // --- FIX 1: Get history and future for Undo/Redo ---
+  const { objects, selectedIds, mode, history, future } = useAppState();
   const dispatch = useAppDispatch();
 
   // Find real object node
@@ -73,9 +74,11 @@ export default function BoardCanvas() {
     (arrowId, endpoint, handlePos) => {
       const arrow = objects[arrowId];
       if (!arrow) return; // Add guard clause
+      
+      // --- FIX 2: Corrected typo from .sx to .x and .sy to .y ---
       const pos =
-        handlePos?.sx != null
-          ? { x: handlePos.sx, y: handlePos.sy }
+        handlePos?.x != null
+          ? { x: handlePos.x, y: handlePos.y }
           // Fix: Check if start object exists before getting center
           : (objects[arrow.startId] ? getObjectCenter(objects[arrow.startId]) : { x: 0, y: 0 });
 
@@ -372,14 +375,51 @@ export default function BoardCanvas() {
     [createObject]
   );
 
+  // --- FIX 1: Add handlers for Toolbar ---
+  const handleUndo = useCallback(() => {
+    dispatch({ type: ActionTypes.UNDO });
+  }, [dispatch]);
+
+  const handleRedo = useCallback(() => {
+    dispatch({ type: ActionTypes.REDO });
+  }, [dispatch]);
+
+  const handleClearBoard = useCallback(() => {
+    if (window.confirm("Are you sure you want to clear the entire board?")) {
+      dispatch({ type: ActionTypes.CLEAR_BOARD });
+    }
+  }, [dispatch]);
+
+  const handleZoom = useCallback((direction) => {
+    const stage = stageRef.current;
+    if (!stage) return;
+    const scaleBy = 1.1;
+    const oldScale = stage.scaleX();
+    
+    const newScale = direction === "in" ? oldScale * scaleBy : oldScale / scaleBy;
+    
+    stage.scale({ x: newScale, y: newScale });
+    stage.batchDraw();
+  }, []);
+
   // RENDER
   return (
     <div className="w-full h-full relative">
+      {/* --- FIX 1: Pass all required props to Toolbar --- */}
       <Toolbar
         mode={mode}
         setMode={(m) => dispatch({ type: ActionTypes.SET_MODE, payload: m })}
         onColorChange={setSelectedColor}
         onImageUpload={() => fileInputRef.current.click()}
+        
+        // Add these new props
+        onUndo={handleUndo}
+        onRedo={handleRedo}
+        onClearBoard={handleClearBoard}
+        onZoomIn={() => handleZoom("in")}
+        onZoomOut={() => handleZoom("out")}
+        canUndo={history.length > 0}
+        canRedo={future.length > 0}
       />
 
       <input
