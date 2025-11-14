@@ -1,6 +1,6 @@
 // src/context/AppProvider.jsx
 import React, { createContext, useContext, useReducer, useEffect, useRef } from "react";
-import { uuid } from "../utils/uuid"; // Import uuid
+import { uuid } from "../utils/uuid.js"; // Import uuid
 
 const AppStateContext = createContext();
 const AppDispatchContext = createContext();
@@ -31,16 +31,19 @@ const ActionTypes = {
   SET_SELECTED: "SET_SELECTED",
   ADD_OBJECT: "ADD_OBJECT",
   UPDATE_OBJECT: "UPDATE_OBJECT",
+  UPDATE_OBJECT_LIVE: "UPDATE_OBJECT_LIVE", // For live drag updates
   DELETE_OBJECT: "DELETE_OBJECT",
   CLEAR_BOARD: "CLEAR_BOARD",
   UNDO: "UNDO",
   REDO: "REDO",
+  RECONNECT_START: "RECONNECT_START",
+  RECONNECT_END: "RECONNECT_END",
 };
 
 function reducer(state, action) {
   switch (action.type) {
     case ActionTypes.SET_MODE:
-      return { ...state, mode: action.payload };
+      return { ...state, mode: action.payload, selectedIds: [] }; // Deselect on mode change
 
     case ActionTypes.SET_SELECTED:
       return { ...state, selectedIds: action.payload };
@@ -54,11 +57,29 @@ function reducer(state, action) {
         ...state,
         objects: newObjects,
         selectedIds: [action.payload.id],
-        history: [...state.history, state.objects],
+        history: [...state.history, state.objects], // Save previous state
         future: [],
       };
     }
 
+    // New reducer case for live updates WITHOUT saving history
+    case ActionTypes.UPDATE_OBJECT_LIVE: {
+      const { id, updates } = action.payload;
+      const existingObject = state.objects[id];
+      if (!existingObject) return state;
+
+      const newObjects = {
+        ...state.objects,
+        [id]: { ...existingObject, ...updates },
+      };
+
+      return { 
+        ...state, 
+        objects: newObjects 
+      };
+    }
+
+    // This action (for drag end, etc.) WILL save to history
     case ActionTypes.UPDATE_OBJECT: {
       const { id, updates } = action.payload;
       const existingObject = state.objects[id];
@@ -69,14 +90,12 @@ function reducer(state, action) {
         [id]: { ...existingObject, ...updates },
       };
 
-      // --- THIS IS THE FIX ---
       return { 
         ...state, 
         objects: newObjects,
         history: [...state.history, state.objects], // Save previous state
         future: [], // Clear future on update
       };
-      // --- END OF FIX ---
     }
 
     case ActionTypes.DELETE_OBJECT: {
@@ -84,7 +103,6 @@ function reducer(state, action) {
       const newObjects = { ...state.objects };
       delete newObjects[idToDelete];
 
-      // --- THIS IS THE FIX ---
       return {
         ...state,
         objects: newObjects,
@@ -92,7 +110,6 @@ function reducer(state, action) {
         history: [...state.history, state.objects], // Save previous state
         future: [], // Clear future on delete
       };
-      // --- END OF FIX ---
     }
 
     case ActionTypes.CLEAR_BOARD:
@@ -111,19 +128,19 @@ function reducer(state, action) {
         ...state,
         objects: previous,
         history: state.history.slice(0, -1),
-        future: [...state.future, state.objects],
+        future: [state.objects, ...state.future], // Prepend current state
         selectedIds: [],
       };
     }
 
     case ActionTypes.REDO: {
       if (state.future.length === 0) return state;
-      const next = state.future[state.future.length - 1];
+      const next = state.future[0]; // Get first item from future
       return {
         ...state,
         objects: next,
-        future: state.future.slice(0, -1),
-        history: [...state.history, state.objects],
+        future: state.future.slice(1), // Remove first item
+        history: [...state.history, state.objects], // Add current state to history
         selectedIds: [],
       };
     }
