@@ -66,6 +66,8 @@ function Shape({ obj, selected, onSelect, onUpdate }) {
   // --- START: New Feature (Live Arrow Move) ---
   // Throttled drag move handler
   const handleDragMove = useCallback((e) => {
+    // --- THIS IS THE FIX: COMMENTED OUT TO PREVENT HISTORY SPAM ---
+    /*
     const now = Date.now();
     if (now - lastUpdateRef.current < THROTTLE_MS) {
       return;
@@ -77,6 +79,8 @@ function Shape({ obj, selected, onSelect, onUpdate }) {
       x: node.x(),
       y: node.y(),
     });
+    */
+    // --- END OF FIX ---
   }, [obj.id, onUpdate]);
   // --- END: New Feature (Live Arrow Move) ---
 
