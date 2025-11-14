@@ -7,22 +7,32 @@ import { getRelativePointer } from "../../utils/konvaHelpers";
 import { uuid } from "../../utils/uuid";
 import { useAppState, useAppDispatch, ActionTypes } from "../../context/AppProvider";
 
-// Shared helper for arrow center
+// --- THIS IS THE CORRECTED LOGIC ---
 const getObjectCenter = (o) => {
   if (!o) return { x: 0, y: 0 };
+
   switch (o.type) {
+    // These types have (x,y) as their center
     case "circle":
     case "image":
     case "sticky":
       return { x: o.x, y: o.y };
+
+    // These types have (x,y) as their top-left
     case "rect":
-      return { x: o.x + o.width / 2, y: o.y + o.height / 2 };
     case "text":
-      return { x: o.x + (o.width || 80) / 2, y: o.y + 12 };
+      // Text center is slightly different for better feel
+      if (o.type === 'text') {
+         return { x: o.x + (o.width || 80) / 2, y: o.y + 12 };
+      }
+      return { x: o.x + (o.width || 0) / 2, y: o.y + (o.height || 0) / 2 };
+
+    // Fallback
     default:
       return { x: o.x || 0, y: o.y || 0 };
   }
 };
+// --- END OF CORRECTION ---
 
 export default function BoardCanvas() {
   const stageRef = useRef();
@@ -44,7 +54,7 @@ export default function BoardCanvas() {
     startPos: null
   });
 
-  // --- FIX 1: Get history and future for Undo/Redo ---
+  // --- FIX: Get history and future for Undo/Redo ---
   const { objects, selectedIds, mode, history, future } = useAppState();
   const dispatch = useAppDispatch();
 
@@ -75,11 +85,10 @@ export default function BoardCanvas() {
       const arrow = objects[arrowId];
       if (!arrow) return; // Add guard clause
       
-      // --- FIX 2: Corrected typo from .sx to .x and .sy to .y ---
+      // --- FIX: Corrected typo from .sx to .x and .sy to .y ---
       const pos =
         handlePos?.x != null
           ? { x: handlePos.x, y: handlePos.y }
-          // Fix: Check if start object exists before getting center
           : (objects[arrow.startId] ? getObjectCenter(objects[arrow.startId]) : { x: 0, y: 0 });
 
 
@@ -190,7 +199,7 @@ export default function BoardCanvas() {
         
         if (mode === "sticky") {
           createObject("sticky", {
-            x: pos.x, // Place top-left at cursor
+            x: pos.x, // Place center at cursor
             y: pos.y,
             width: 150,
             height: 150,
@@ -375,13 +384,12 @@ export default function BoardCanvas() {
     [createObject]
   );
 
-  // --- START: ADD LIVE UPDATE HANDLER ---
+  // --- FIX: ADD LIVE UPDATE HANDLER ---
   const handleLiveUpdate = useCallback((id, updates) => {
     dispatch({ type: ActionTypes.UPDATE_OBJECT_LIVE, payload: { id, updates } });
   }, [dispatch]);
-  // --- END: ADD LIVE UPDATE HANDLER ---
 
-  // --- FIX 1: Add handlers for Toolbar ---
+  // --- FIX: Add handlers for Toolbar ---
   const handleUndo = useCallback(() => {
     dispatch({ type: ActionTypes.UNDO });
   }, [dispatch]);
@@ -411,7 +419,7 @@ export default function BoardCanvas() {
   // RENDER
   return (
     <div className="w-full h-full relative">
-      {/* --- FIX 1: Pass all required props to Toolbar --- */}
+      {/* --- FIX: Pass all required props to Toolbar --- */}
       <Toolbar
         mode={mode}
         setMode={(m) => dispatch({ type: ActionTypes.SET_MODE, payload: m })}
@@ -455,9 +463,8 @@ export default function BoardCanvas() {
             onUpdate={(id, updates) =>
               dispatch({ type: ActionTypes.UPDATE_OBJECT, payload: { id, updates } })
             }
-            // --- START: PASS LIVE UPDATE PROP ---
+            // --- FIX: PASS LIVE UPDATE PROP ---
             onLiveUpdate={handleLiveUpdate}
-            // --- END: PASS LIVE UPDATE PROP ---
             onStartReconnect={handleStartReconnect}
           />
 
