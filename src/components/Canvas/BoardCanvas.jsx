@@ -5,7 +5,7 @@ import { getRelativePointer } from "../../utils/konvaHelpers";
 import LayerObjects from "./LayerObjects";
 import Toolbar from "../Toolbar/Toolbar";
 import { useAppState, useAppDispatch, ActionTypes } from "../../context/AppProvider";
-import { uuid } from "../../utils/uuid"; // Added import
+import { uuid } from "../../utils/uuid"; 
 
 export default function BoardCanvas() {
   const stageRef = useRef();
@@ -28,7 +28,7 @@ export default function BoardCanvas() {
 
   // Create object helper with validation
   const createObject = useCallback((type, props) => {
-    const id = 'obj-' + uuid(); // Use uuid()
+    const id = 'obj-' + uuid();
     const obj = {
       id,
       type,
@@ -59,7 +59,7 @@ export default function BoardCanvas() {
     });
   }, []);
 
-  // Handler for color changes from Toolbar
+  // --- NEW: Handler for color changes from Toolbar ---
   const handleColorChange = useCallback((newColor) => {
     // 1. Update the local color state (for creating new shapes)
     setSelectedColor(newColor);
@@ -78,11 +78,11 @@ export default function BoardCanvas() {
         }
       });
     }
-  }, [selectedIds, dispatch, objects]);
+  }, [selectedIds, dispatch, objects]); // Added objects
 
   // Mouse event handlers
   const handleMouseDown = useCallback((e) => {
-    const pos = getRelativePointer(stageRef.current); // Use imported helper
+    const pos = getRelativePointer(stageRef.current);
     if (!pos) return;
 
     // Prevent default behavior
@@ -94,10 +94,32 @@ export default function BoardCanvas() {
         points: [pos.x, pos.y],
         stroke: selectedColor,
         strokeWidth: 3,
-        tension: 0.5, // Smooth curves
+        tension: 0.5,
       });
       return;
     }
+    
+    // --- NEW: Arrow drawing logic (start) ---
+    if (mode === "arrow") {
+      // Check if we clicked ON a shape (not the stage itself)
+      if (e.target !== stageRef.current) {
+        // Find the top-level group or shape that was clicked
+        const startNode = e.target.getSelfRect() ? e.target : e.target.getParent();
+        const startId = startNode?.id(); // Use optional chaining for safety
+
+        if (startId && objects[startId]) { // Check if it's a valid object
+           setPreviewShape({
+            type: "arrow",
+            startId: startId, // Store the starting object ID
+            stroke: selectedColor,
+            strokeWidth: 3,
+            points: [pos.x, pos.y, pos.x, pos.y], // Preview from cursor
+          });
+        }
+      }
+      return; // Stop here for arrow mode
+    }
+    // --- END: Arrow drawing logic ---
 
     // Shape creation modes
     const shapeHandlers = {
@@ -133,20 +155,13 @@ export default function BoardCanvas() {
         radius: 50,
         fill: selectedColor || "#8ECAE6",
       }),
-
-      arrow: () => {
-        // Arrow tool requires two clicks - start implementation
-        console.log("Arrow tool clicked at:", pos);
-        // You'll need to implement arrow connection logic here
-      }
+      
+      // --- REMOVED: Arrow placeholder ---
     };
 
     if (shapeHandlers[mode]) {
       shapeHandlers[mode]();
-      // Only switch back to select for single-click tools
-      if (mode !== "arrow") {
-        dispatch({ type: ActionTypes.SET_MODE, payload: "select" });
-      }
+      dispatch({ type: ActionTypes.SET_MODE, payload: "select" });
       return;
     }
 
@@ -161,36 +176,33 @@ export default function BoardCanvas() {
     }
 
     // Selection mode
-    if (e.target === stageRef.current) { // Check against stageRef
+    if (e.target === stageRef.current) { 
       setSelection({ start: pos, active: true });
       dispatch({ type: ActionTypes.SET_SELECTED, payload: [] });
     }
-  }, [mode, selectedColor, createObject, dispatch]);
+  }, [mode, selectedColor, createObject, dispatch, objects]); // Added 'objects'
 
   const handleMouseMove = useCallback((e) => {
-    const pos = getRelativePointer(stageRef.current); // Use imported helper
+    const pos = getRelativePointer(stageRef.current);
     if (!pos) return;
 
     // Drawing with performance optimization
     if (mode === "draw" && currentLine) {
-      // Throttle points for better performance
+      // ... (drawing logic unchanged)
       setCurrentLine(prev => {
         const newPoints = [...prev.points];
-        // Only add point if it's significantly different from last point
         const lastX = newPoints[newPoints.length - 2];
         const lastY = newPoints[newPoints.length - 1];
-
         if (Math.abs(pos.x - lastX) > 2 || Math.abs(pos.y - lastY) > 2) {
           newPoints.push(pos.x, pos.y);
         }
-
         return { ...prev, points: newPoints };
       });
       return;
     }
 
-    // Line preview
-    if (mode === "line" && previewShape) {
+    // --- MODIFIED: Line and Arrow preview ---
+    if ((mode === "line" || mode === "arrow") && previewShape) {
       setPreviewShape(prev => ({
         ...prev,
         points: [prev.points[0], prev.points[1], pos.x, pos.y],
@@ -200,9 +212,9 @@ export default function BoardCanvas() {
 
     // Selection rectangle
     if (selection.active && selection.start) {
+      // ... (selection rect logic unchanged)
       const sel = selectionRectRef.current;
       const start = selection.start;
-
       sel.position({
         x: Math.min(pos.x, start.x),
         y: Math.min(pos.y, start.y),
@@ -210,15 +222,14 @@ export default function BoardCanvas() {
       sel.width(Math.abs(pos.x - start.x));
       sel.height(Math.abs(pos.y - start.y));
       sel.visible(true);
-
-      // Batch draw for performance
       layerRef.current?.batchDraw();
     }
-  }, [mode, currentLine, previewShape, selection]); // Removed getRelativePointer from deps
+  }, [mode, currentLine, previewShape, selection]); 
 
   const handleMouseUp = useCallback(() => {
     // Finish drawing
     if (mode === "draw" && currentLine) {
+      // ... (drawing logic unchanged)
       if (currentLine.points.length >= 4) {
         createObject("freehand", {
           points: currentLine.points,
@@ -233,22 +244,46 @@ export default function BoardCanvas() {
 
     // Finish line
     if (mode === "line" && previewShape) {
-      // Only create line if it has meaningful length
+      // ... (line logic unchanged)
       const [x1, y1, x2, y2] = previewShape.points;
       const distance = Math.sqrt(Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2));
-
-      if (distance > 10) { // Minimum line length
+      if (distance > 10) { 
         createObject("line", {
           points: previewShape.points,
           stroke: previewShape.stroke,
           strokeWidth: previewShape.strokeWidth,
         });
       }
-
       setPreviewShape(null);
       dispatch({ type: ActionTypes.SET_MODE, payload: "select" });
       return;
     }
+
+    // --- NEW: Arrow drawing logic (end) ---
+    if (mode === "arrow" && previewShape) {
+      const stage = stageRef.current;
+      const pos = getRelativePointer(stage);
+      
+      if (pos) {
+        // Find what's under the cursor
+        const endShape = stage.getIntersection(pos); 
+
+        // Check if we dropped on a valid shape that is NOT the start shape
+        if (endShape && endShape.id() && endShape.id() !== previewShape.startId) {
+          createObject("arrow", {
+            startId: previewShape.startId,
+            endId: endShape.id(),
+            stroke: previewShape.stroke,
+            strokeWidth: previewShape.strokeWidth,
+          });
+        }
+      }
+      
+      setPreviewShape(null); // Clear the preview
+      dispatch({ type: ActionTypes.SET_MODE, payload: "select" }); // Go back to select mode
+      return;
+    }
+    // --- END: Arrow drawing logic ---
 
     // Finish selection
     if (selection.active) {
@@ -259,22 +294,19 @@ export default function BoardCanvas() {
     }
   }, [mode, currentLine, previewShape, selection, createObject, dispatch]);
 
-  // Image upload handler with better error handling
+  // Image upload handler
   const handleImageUpload = useCallback((e) => {
+    // ... (logic unchanged)
     const file = e?.target?.files?.[0];
     if (!file) return;
-
-    // Validate file type and size
     if (!file.type.startsWith('image/')) {
       alert('Please select a valid image file (JPEG, PNG, GIF, etc.)');
       return;
     }
-
     if (file.size > 10 * 1024 * 1024) { // 10MB limit
       alert('Image size must be less than 10MB');
       return;
     }
-
     const reader = new FileReader();
     reader.onload = (loadEvent) => {
       const dataUrl = loadEvent.target?.result;
@@ -288,47 +320,35 @@ export default function BoardCanvas() {
         });
       }
     };
-
     reader.onerror = () => {
       alert('Error reading image file');
       console.error('FileReader error:', reader.error);
     };
-
     reader.readAsDataURL(file);
-
-    // Reset file input
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
   }, [createObject]);
 
-  // Zoom handlers with constraints
+  // Zoom handlers
   const zoomAt = useCallback((scaleBy, fixedPoint = null) => {
+    // ... (logic unchanged)
     const stage = stageRef.current;
     if (!stage) return;
-
     const oldScale = stage.scaleX();
     const pointer = fixedPoint || stage.getPointerPosition();
-
     if (!pointer) return;
-
     const mousePoint = {
       x: (pointer.x - stage.x()) / oldScale,
       y: (pointer.y - stage.y()) / oldScale,
     };
-
-    // Constrain zoom levels
     const newScale = Math.max(0.05, Math.min(20, oldScale * scaleBy));
-
-    // Only zoom if scale actually changes
     if (Math.abs(newScale - oldScale) > 0.001) {
       stage.scale({ x: newScale, y: newScale });
-
       const newPos = {
         x: pointer.x - mousePoint.x * newScale,
         y: pointer.y - mousePoint.y * newScale,
       };
-
       stage.position(newPos);
       stage.batchDraw();
       updateViewport();
@@ -337,39 +357,32 @@ export default function BoardCanvas() {
 
   const handleWheel = useCallback((e) => {
     e.evt.preventDefault();
-    const direction = e.evt.deltaY > 0 ? 1 / 1.2 : 1.2; // Smoother zoom
+    const direction = e.evt.deltaY > 0 ? 1 / 1.2 : 1.2;
     zoomAt(direction);
   }, [zoomAt]);
 
   // Keyboard shortcuts
   useEffect(() => {
+    // ... (logic unchanged)
     const handleKeyDown = (e) => {
-      // Ctrl/Cmd + Z for undo
       if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
         e.preventDefault();
         dispatch({ type: ActionTypes.UNDO });
       }
-
-      // Ctrl/Cmd + Shift + Z or Ctrl/Cmd + Y for redo
       if ((e.ctrlKey || e.metaKey) && (e.shiftKey && e.key === 'z') || e.key === 'y') {
         e.preventDefault();
         dispatch({ type: ActionTypes.REDO });
       }
-
-      // Delete key to remove selected objects
       if (e.key === 'Delete' || e.key === 'Backspace') {
         e.preventDefault();
         selectedIds.forEach(id => {
           dispatch({ type: ActionTypes.DELETE_OBJECT, payload: id });
         });
       }
-
-      // Escape to clear selection
       if (e.key === 'Escape') {
         dispatch({ type: ActionTypes.SET_SELECTED, payload: [] });
       }
     };
-
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [dispatch, selectedIds]);
@@ -386,7 +399,7 @@ export default function BoardCanvas() {
       <Toolbar
         mode={mode}
         setMode={(m) => dispatch({ type: ActionTypes.SET_MODE, payload: m })}
-        onColorChange={handleColorChange}
+        onColorChange={handleColorChange} // Use the new color handler
         onImageUpload={() => fileInputRef.current?.click()}
         onUndo={() => dispatch({ type: ActionTypes.UNDO })}
         onRedo={() => dispatch({ type: ActionTypes.REDO })}
@@ -450,7 +463,7 @@ export default function BoardCanvas() {
             />
           )}
 
-          {/* Line preview */}
+          {/* Line & Arrow preview */}
           {previewShape && (
             <Line
               points={previewShape.points}
