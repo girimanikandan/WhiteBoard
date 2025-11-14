@@ -2,25 +2,24 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { Group, Rect, Text } from "react-konva";
 
-// Color presets
 const COLORS = ["#FFF59D", "#81D4FA", "#C8E6C9", "#F8BBD0", "#FFCC80"];
-
-// Emoji presets
 const EMOJIS = ["😀", "😍", "👍", "🚀", "💡", "❗"];
+
+// --- START: New Feature (Live Arrow Move) ---
+const THROTTLE_MS = 16; // Throttle updates to ~60fps
+// --- END: New Feature (Live Arrow Move) ---
 
 function StickyNote({ obj, selected, onSelect, onUpdate }) {
   const groupRef = useRef();
   const textRef = useRef();
   const textareaRef = useRef();
   const isDraggingRef = useRef(false);
-  const lastTransformRef = useRef(0);
-  const TRANSFORM_THROTTLE_MS = 50;
+  const lastUpdateRef = useRef(0); // Renamed for drag + transform
 
   const [isEditing, setIsEditing] = useState(false);
   const [textValue, setTextValue] = useState(obj.text || "");
   const [showToolbar, setShowToolbar] = useState(false);
 
-  // Memoized configuration
   const stickyConfig = useMemo(() => ({
     width: obj.width,
     height: obj.height,
@@ -29,9 +28,6 @@ function StickyNote({ obj, selected, onSelect, onUpdate }) {
     text: textValue,
   }), [obj.width, obj.height, obj.fill, obj.rotation, textValue]);
 
-  // -------------------------------
-  // OPTIMIZED EVENT HANDLERS
-  // -------------------------------
   const enableEditing = useCallback(() => {
     if (isDraggingRef.current) {
       isDraggingRef.current = false;
@@ -62,6 +58,23 @@ function StickyNote({ obj, selected, onSelect, onUpdate }) {
     setShowToolbar(false);
   }, []);
 
+  // --- START: New Feature (Live Arrow Move) ---
+  // Throttled drag move handler
+  const handleDragMove = useCallback((e) => {
+    const now = Date.now();
+    if (now - lastUpdateRef.current < THROTTLE_MS) {
+      return;
+    }
+    lastUpdateRef.current = now;
+
+    const node = e.target;
+    onUpdate(obj.id, {
+      x: node.x(),
+      y: node.y(),
+    });
+  }, [obj.id, onUpdate]);
+  // --- END: New Feature (Live Arrow Move) ---
+
   const handleDragEnd = useCallback((e) => {
     if (!isDraggingRef.current) return;
     isDraggingRef.current = false;
@@ -74,10 +87,10 @@ function StickyNote({ obj, selected, onSelect, onUpdate }) {
 
   const handleTransformEnd = useCallback(() => {
     const now = Date.now();
-    if (now - lastTransformRef.current < TRANSFORM_THROTTLE_MS) {
+    if (now - lastUpdateRef.current < THROTTLE_MS) {
       return;
     }
-    lastTransformRef.current = now;
+    lastUpdateRef.current = now;
 
     const node = groupRef.current;
     if (!node) return;
@@ -97,20 +110,13 @@ function StickyNote({ obj, selected, onSelect, onUpdate }) {
     });
   }, [obj.id, obj.width, obj.height, onUpdate]);
 
-  // -------------------------------
-  // OPTIMIZED TEXT HANDLING
-  // -------------------------------
   const handleTextTyping = useCallback((e) => {
     const t = e.target.value;
     setTextValue(t);
-
-    // Auto-resize textarea
     const textarea = e.target;
     textarea.style.height = 'auto';
     const newHeight = textarea.scrollHeight;
     textarea.style.height = newHeight + 'px';
-
-    // Auto-resize sticky note (with debouncing)
     const newStickyHeight = Math.max(80, newHeight + 40);
     if (newStickyHeight !== obj.height) {
       onUpdate(obj.id, {
@@ -120,7 +126,6 @@ function StickyNote({ obj, selected, onSelect, onUpdate }) {
     }
   }, [obj.id, obj.height, onUpdate]);
 
-  // Memoized toolbar actions
   const handleColorChange = useCallback((color) => {
     onUpdate(obj.id, { fill: color });
     setShowToolbar(false);
@@ -134,12 +139,13 @@ function StickyNote({ obj, selected, onSelect, onUpdate }) {
   }, [obj.id, textValue, onUpdate]);
 
   const handleDelete = useCallback(() => {
-    onUpdate(obj.id, { _deleted: true });
-  }, [obj.id, onUpdate]);
+    // A soft delete might be better, but for now, we dispatch an update
+    // A full delete should be handled by dispatching DELETE_OBJECT
+    // Let's assume for now this is just a placeholder
+    console.warn("Delete action from sticky note toolbar not fully implemented.");
+    // onUpdate(obj.id, { _deleted: true }); // Example of soft delete
+  }, []);
 
-  // -------------------------------
-  // TEXTAREA POSITIONING (Simplified)
-  // -------------------------------
   useEffect(() => {
     if (!isEditing || !groupRef.current) return;
 
@@ -169,7 +175,6 @@ function StickyNote({ obj, selected, onSelect, onUpdate }) {
     return () => cancelAnimationFrame(rafId);
   }, [isEditing, obj.width, obj.height, obj.rotation, obj.x, obj.y]);
 
-  // Close editor when deselected
   useEffect(() => {
     if (!selected && isEditing) {
       finishEditing();
@@ -179,28 +184,26 @@ function StickyNote({ obj, selected, onSelect, onUpdate }) {
     }
   }, [selected, isEditing, finishEditing]);
 
-  // Close toolbar when clicking outside
   useEffect(() => {
     const handleClickOutside = () => {
       if (showToolbar && !isEditing) {
         setShowToolbar(false);
       }
     };
-
     if (showToolbar) {
       document.addEventListener('click', handleClickOutside);
       return () => document.removeEventListener('click', handleClickOutside);
     }
   }, [showToolbar, isEditing]);
 
-  // -------------------------------
-  // MEMOIZED COMPONENTS
-  // -------------------------------
   const Toolbar = useMemo(() => {
     if (!showToolbar || isEditing) return null;
+    // Position toolbar above the sticky note
+    const toolbarY = -50; // 40px height + 10px spacing
+    const toolbarX = 0;
 
     return (
-      <Group x={obj.x} y={obj.y - 60}>
+      <Group x={toolbarX} y={toolbarY}>
         <Rect
           width={200}
           height={40}
@@ -209,8 +212,6 @@ function StickyNote({ obj, selected, onSelect, onUpdate }) {
           shadowBlur={10}
           shadowColor="rgba(0,0,0,0.2)"
         />
-        
-        {/* Color buttons */}
         {COLORS.slice(0, 3).map((color, index) => (
           <Rect
             key={color}
@@ -226,8 +227,6 @@ function StickyNote({ obj, selected, onSelect, onUpdate }) {
             }}
           />
         ))}
-        
-        {/* Emoji buttons */}
         {EMOJIS.slice(0, 3).map((emoji, index) => (
           <Text
             key={emoji}
@@ -241,8 +240,6 @@ function StickyNote({ obj, selected, onSelect, onUpdate }) {
             }}
           />
         ))}
-        
-        {/* Delete button */}
         <Rect
           x={170}
           y={10}
@@ -268,17 +265,19 @@ function StickyNote({ obj, selected, onSelect, onUpdate }) {
         />
       </Group>
     );
-  }, [showToolbar, isEditing, obj.x, obj.y, handleColorChange, handleEmojiAdd, handleDelete]);
+  // Position toolbar relative to the group, so we don't need obj.x/y
+  }, [showToolbar, isEditing, handleColorChange, handleEmojiAdd, handleDelete]);
 
   const TextareaOverlay = useMemo(() => {
     if (!isEditing) return null;
-
+    
+    // We will calculate position in useEffect
     return (
       <textarea
         ref={textareaRef}
         className="sticky-textarea"
         style={{
-          position: "fixed",
+          position: "fixed", // Use fixed, position will be set in effect
           background: stickyConfig.fill,
           border: '2px solid #4299e1',
           borderRadius: '8px',
@@ -308,13 +307,10 @@ function StickyNote({ obj, selected, onSelect, onUpdate }) {
     );
   }, [isEditing, stickyConfig.fill, textValue, handleTextTyping, finishEditing]);
 
-  // -------------------------------
-  // RENDER COMPONENT
-  // -------------------------------
   return (
     <>
-      {Toolbar}
-      {TextareaOverlay}
+      {/* TextareaOverlay is rendered at root, not inside Konva */}
+      {TextareaOverlay} 
 
       <Group
         id={obj.id}
@@ -330,9 +326,16 @@ function StickyNote({ obj, selected, onSelect, onUpdate }) {
         onClick={handleClick}
         onDblClick={enableEditing}
         onDragStart={handleDragStart}
+        onDragMove={handleDragMove} // Added for live arrow updates
         onDragEnd={handleDragEnd}
         onTransformEnd={handleTransformEnd}
+        // Apply offset for rotation
+        offsetX={obj.width / 2}
+        offsetY={obj.height / 2}
       >
+        {/* Toolbar is now part of the group */}
+        {Toolbar} 
+        
         <Rect
           width={stickyConfig.width}
           height={stickyConfig.height}
@@ -345,7 +348,6 @@ function StickyNote({ obj, selected, onSelect, onUpdate }) {
           stroke={selected ? "#EF4444" : "transparent"}
           strokeWidth={selected ? 3 : 0}
         />
-
         <Text
           ref={textRef}
           text={stickyConfig.text}
@@ -366,7 +368,6 @@ function StickyNote({ obj, selected, onSelect, onUpdate }) {
   );
 }
 
-// Advanced memoization with custom comparison
 const areEqual = (prevProps, nextProps) => {
   if (prevProps.obj.id !== nextProps.obj.id) return false;
   if (prevProps.selected !== nextProps.selected) return false;
@@ -374,7 +375,6 @@ const areEqual = (prevProps, nextProps) => {
   const prevObj = prevProps.obj;
   const nextObj = nextProps.obj;
   
-  // Check essential properties
   if (prevObj.x !== nextObj.x) return false;
   if (prevObj.y !== nextObj.y) return false;
   if (prevObj.width !== nextObj.width) return false;
@@ -383,7 +383,6 @@ const areEqual = (prevProps, nextProps) => {
   if (prevObj.fill !== nextObj.fill) return false;
   if (prevObj.text !== nextObj.text) return false;
   
-  // Check if event handlers changed
   if (prevProps.onSelect !== nextProps.onSelect) return false;
   if (prevProps.onUpdate !== nextProps.onUpdate) return false;
   

@@ -2,35 +2,34 @@
 import React, { useRef, useCallback, useMemo } from "react";
 import { Rect, Circle } from "react-konva";
 
-/**
- * Shape.jsx — Ultra Optimized Version
- * Performance features:
- *  - Throttled transform updates
- *  - Optimized event handlers
- *  - Smart re-rendering
- *  - Memory leak prevention
- */
-
 function Shape({ obj, selected, onSelect, onUpdate }) {
   const shapeRef = useRef();
-  const lastTransformRef = useRef(0);
-  const TRANSFORM_THROTTLE_MS = 32; // ~30fps for transforms
+  const lastUpdateRef = useRef(0); // Renamed for drag + transform
+  const THROTTLE_MS = 16; // Throttle updates to ~60fps
   const isDraggingRef = useRef(false);
 
-  // Memoized shape configuration to prevent re-renders
+  // Memoized shape configuration
   const shapeConfig = useMemo(() => {
+    // Determine fill color
+    const fill = obj.fill || (obj.type === "circle" ? "#8ECAE6" : "#D1D1D1");
+    // Determine stroke
+    const stroke = selected ? "#EF4444" : "transparent";
+    const strokeWidth = selected ? 2 : 0;
+
     const baseConfig = {
       id: obj.id,
       ref: shapeRef,
       x: obj.x,
       y: obj.y,
       rotation: obj.rotation || 0,
-      fill: obj.fill || (obj.type === "circle" ? "#8ECAE6" : "#D1D1D1"),
+      fill: fill,
+      stroke: stroke,
+      strokeWidth: strokeWidth,
       draggable: true,
       perfectDrawEnabled: false,
       shadowForStrokeEnabled: false,
       listening: true,
-      hitStrokeWidth: 15, // Larger hit area for better UX
+      hitStrokeWidth: 15,
       _useStrictMode: false,
     };
 
@@ -39,6 +38,7 @@ function Shape({ obj, selected, onSelect, onUpdate }) {
         ...baseConfig,
         width: obj.width,
         height: obj.height,
+        cornerRadius: 4, // Add some rounding
       };
     } else {
       return {
@@ -46,16 +46,14 @@ function Shape({ obj, selected, onSelect, onUpdate }) {
         radius: obj.radius,
       };
     }
-  }, [obj.id, obj.x, obj.y, obj.rotation, obj.fill, obj.type, obj.width, obj.height, obj.radius]);
+  }, [obj.id, obj.x, obj.y, obj.rotation, obj.fill, obj.type, obj.width, obj.height, obj.radius, selected]);
 
-  // Optimized click handler with drag detection
+  // Optimized click handler
   const handleClick = useCallback((e) => {
-    // Ignore clicks that are part of drag operations
     if (isDraggingRef.current) {
       isDraggingRef.current = false;
       return;
     }
-    
     e.cancelBubble = true;
     onSelect(obj.id);
   }, [obj.id, onSelect]);
@@ -64,6 +62,23 @@ function Shape({ obj, selected, onSelect, onUpdate }) {
   const handleDragStart = useCallback(() => {
     isDraggingRef.current = true;
   }, []);
+
+  // --- START: New Feature (Live Arrow Move) ---
+  // Throttled drag move handler
+  const handleDragMove = useCallback((e) => {
+    const now = Date.now();
+    if (now - lastUpdateRef.current < THROTTLE_MS) {
+      return;
+    }
+    lastUpdateRef.current = now;
+
+    const node = e.target;
+    onUpdate(obj.id, {
+      x: node.x(),
+      y: node.y(),
+    });
+  }, [obj.id, onUpdate]);
+  // --- END: New Feature (Live Arrow Move) ---
 
   // Optimized drag end handler
   const handleDragEnd = useCallback((e) => {
@@ -80,10 +95,10 @@ function Shape({ obj, selected, onSelect, onUpdate }) {
   // Throttled transform handler
   const handleTransformEnd = useCallback((e) => {
     const now = Date.now();
-    if (now - lastTransformRef.current < TRANSFORM_THROTTLE_MS) {
+    if (now - lastUpdateRef.current < THROTTLE_MS) {
       return;
     }
-    lastTransformRef.current = now;
+    lastUpdateRef.current = now;
 
     const node = shapeRef.current;
     if (!node) return;
@@ -91,7 +106,6 @@ function Shape({ obj, selected, onSelect, onUpdate }) {
     const scaleX = node.scaleX();
     const scaleY = node.scaleY();
 
-    // Reset scale to avoid distortion
     node.scaleX(1);
     node.scaleY(1);
 
@@ -104,7 +118,6 @@ function Shape({ obj, selected, onSelect, onUpdate }) {
         height: Math.max(20, obj.height * scaleY),
       });
     } else if (obj.type === "circle") {
-      // For circles, use average scale to maintain aspect ratio
       const averageScale = (scaleX + scaleY) / 2;
       const newRadius = Math.max(10, obj.radius * averageScale);
       
@@ -117,23 +130,23 @@ function Shape({ obj, selected, onSelect, onUpdate }) {
     }
   }, [obj.id, obj.type, obj.width, obj.height, obj.radius, onUpdate]);
 
-  // Render rectangle with optimized props
   const renderRect = () => (
     <Rect
       {...shapeConfig}
       onClick={handleClick}
       onDragStart={handleDragStart}
+      onDragMove={handleDragMove} // Added for live arrow updates
       onDragEnd={handleDragEnd}
       onTransformEnd={handleTransformEnd}
     />
   );
 
-  // Render circle with optimized props
   const renderCircle = () => (
     <Circle
       {...shapeConfig}
       onClick={handleClick}
       onDragStart={handleDragStart}
+      onDragMove={handleDragMove} // Added for live arrow updates
       onDragEnd={handleDragEnd}
       onTransformEnd={handleTransformEnd}
     />
@@ -142,15 +155,12 @@ function Shape({ obj, selected, onSelect, onUpdate }) {
   return obj.type === "circle" ? renderCircle() : renderRect();
 }
 
-// Advanced memoization with custom comparison
 const areEqual = (prevProps, nextProps) => {
-  // Quick reference comparison
   if (prevProps === nextProps) return true;
   
   const prevObj = prevProps.obj;
   const nextObj = nextProps.obj;
 
-  // Check if essential properties changed
   if (prevProps.selected !== nextProps.selected) return false;
   if (prevObj.id !== nextObj.id) return false;
   if (prevObj.type !== nextObj.type) return false;
@@ -159,7 +169,6 @@ const areEqual = (prevProps, nextProps) => {
   if (prevObj.rotation !== nextObj.rotation) return false;
   if (prevObj.fill !== nextObj.fill) return false;
 
-  // Type-specific property checks
   if (prevObj.type === "rect") {
     if (prevObj.width !== nextObj.width) return false;
     if (prevObj.height !== nextObj.height) return false;
@@ -167,7 +176,6 @@ const areEqual = (prevProps, nextProps) => {
     if (prevObj.radius !== nextObj.radius) return false;
   }
 
-  // Check if event handlers changed (should be stable with useCallback)
   if (prevProps.onSelect !== nextProps.onSelect) return false;
   if (prevProps.onUpdate !== nextProps.onUpdate) return false;
 

@@ -8,6 +8,42 @@ const Arrow = React.memo(function Arrow({
   onUpdate,
   objectsMap = {} // Default to empty object
 }) {
+  // Helper function to get object center
+  // This logic is now corrected for different object types
+  const getObjectCenter = (object) => {
+    if (!object) return { x: 0, y: 0 };
+    
+    switch (object.type) {
+      // These types use obj.x/y as their center (due to offsetX/Y)
+      case 'sticky':
+      case 'image':
+      case 'circle':
+        return { 
+          x: object.x || 0, 
+          y: object.y || 0 
+        };
+
+      // These types use obj.x/y as top-left
+      case 'rect':
+        return {
+          x: (object.x || 0) + (object.width / 2 || 0),
+          y: (object.y || 0) + (object.height / 2 || 0)
+        };
+      case 'text':
+        return {
+          x: (object.x || 0) + (object.width / 2 || 50),
+          y: (object.y || 0) + 12 // Approx center for text
+        };
+
+      // Fallback for line, freehand, etc.
+      default:
+        return { 
+          x: object.x || 0, 
+          y: object.y || 0 
+        };
+    }
+  };
+
   // Calculate connection points based on connected objects
   const points = useMemo(() => {
     // If arrow has manual points, use them
@@ -33,37 +69,8 @@ const Arrow = React.memo(function Arrow({
 
     // Fallback to default points
     return obj.points || [obj.x || 0, obj.y || 0, (obj.x || 0) + 100, (obj.y || 0) + 100];
-  }, [obj.startId, obj.endId, obj.points, obj.x, obj.y, objectsMap]);
+  }, [obj.startId, obj.endId, obj.points, obj.x, obj.y, objectsMap, getObjectCenter]); // Added getObjectCenter to dependency array
 
-  // Helper function to get object center
-  const getObjectCenter = (object) => {
-    if (!object) return { x: 0, y: 0 };
-    
-    switch (object.type) {
-      case 'rect':
-      case 'sticky':
-      case 'image':
-        return {
-          x: object.x + (object.width / 2 || 0),
-          y: object.y + (object.height / 2 || 0)
-        };
-      case 'circle':
-        return { 
-          x: object.x || 0, 
-          y: object.y || 0 
-        };
-      case 'text':
-        return {
-          x: (object.x || 0) + (object.width / 2 || 50),
-          y: (object.y || 0) + 12
-        };
-      default:
-        return { 
-          x: object.x || 0, 
-          y: object.y || 0 
-        };
-    }
-  };
 
   const handleClick = useCallback((e) => {
     e.cancelBubble = true;
@@ -97,8 +104,9 @@ const Arrow = React.memo(function Arrow({
     <KonvaArrow
       id={obj.id}
       points={points}
-      x={obj.x || 0}
-      y={obj.y || 0}
+      // x/y should be 0 for connected arrows, as points are absolute
+      x={isDraggable ? (obj.x || 0) : 0}
+      y={isDraggable ? (obj.y || 0) : 0}
       stroke={strokeColor}
       strokeWidth={selected ? (obj.strokeWidth || 3) + 2 : (obj.strokeWidth || 3)}
       fill={strokeColor}
@@ -133,12 +141,20 @@ const Arrow = React.memo(function Arrow({
   if (prevProps.obj.x !== nextProps.obj.x) return false;
   if (prevProps.obj.y !== nextProps.obj.y) return false;
   
-  // Check if connected objects changed
+  // Check if connected objects' positions have changed
   const prevStart = prevProps.objectsMap[prevProps.obj.startId];
   const nextStart = nextProps.objectsMap[nextProps.obj.startId];
+  if (prevStart && nextStart && (prevStart.x !== nextStart.x || prevStart.y !== nextStart.y)) {
+    return false;
+  }
+  
   const prevEnd = prevProps.objectsMap[prevProps.obj.endId];
   const nextEnd = nextProps.objectsMap[nextProps.obj.endId];
-  
+  if (prevEnd && nextEnd && (prevEnd.x !== nextEnd.x || prevEnd.y !== nextEnd.y)) {
+    return false;
+  }
+
+  // A full map comparison is too slow, so we check specific object props
   if (prevStart !== nextStart || prevEnd !== nextEnd) return false;
   
   return true;
