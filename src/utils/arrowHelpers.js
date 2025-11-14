@@ -1,29 +1,24 @@
 // --------- Ultra-optimized connector helpers ---------
 
-// --------- Ultra-optimized connector helpers ---------
-
 export function getCenter(o) {
   if (!o) return { x: 0, y: 0 };
 
-  // MODIFIED: Removed "image" from this block
   if (o.type === "sticky" || o.type === "rect" || o.type === "text") {
     return { x: o.x + (o.width || 0) / 2, y: o.y + (o.height || 0) / 2 };
   }
 
-  // MODIFIED: Added "image" to this block (since its x/y is already the center)
   if (o.type === "circle" || o.type === "image") {
     return { x: o.x, y: o.y };
   }
-  
+
   // Fallback for "point" or unknown
   return { x: o.x || 0, y: o.y || 0 };
 }
-// ---- rectangle intersection (fast version) ----
+
 function intersectRect(cx, cy, tx, ty, rect) {
   const dx = tx - cx;
   const dy = ty - cy;
-  
-  if (dx === 0 && dy === 0) return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 }; // Point is center, return center
+  if (dx === 0 && dy === 0) return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
 
   const left = rect.x;
   const right = rect.x + rect.width;
@@ -52,18 +47,17 @@ function intersectRect(cx, cy, tx, ty, rect) {
     if (t4 > 0 && x4 >= left && x4 <= right) t.push({ t: t4, x: x4, y: bottom });
   }
 
-  if (t.length === 0) return { x: cx, y: cy }; // No intersection, return center (shouldn't happen if target is outside)
+  if (t.length === 0) return { x: cx, y: cy };
 
   t.sort((a, b) => a.t - b.t);
   return t[0];
 }
 
-// ---- circle intersection (fast version) ----
 function intersectCircle(cx, cy, tx, ty, r) {
   const dx = tx - cx;
   const dy = ty - cy;
   const len = Math.hypot(dx, dy);
-  if (len === 0) return { x: cx, y: cy }; // Point is center
+  if (len === 0) return { x: cx, y: cy };
 
   const ux = dx / len;
   const uy = dy / len;
@@ -71,7 +65,6 @@ function intersectCircle(cx, cy, tx, ty, r) {
   return { x: cx + ux * r, y: cy + uy * r };
 }
 
-// -------- MAIN API --------
 export function connectPoints(start, end) {
   if (!start || !end) return [0, 0, 0, 0];
 
@@ -80,7 +73,6 @@ export function connectPoints(start, end) {
 
   let p1, p2;
 
-  // Calculate Start Point (p1)
   if (start.type === "sticky" || start.type === "rect" || start.type === "text" || start.type === "image") {
     p1 = intersectRect(cs.x, cs.y, ce.x, ce.y, {
       x: start.x,
@@ -91,10 +83,9 @@ export function connectPoints(start, end) {
   } else if (start.type === "circle") {
     p1 = intersectCircle(cs.x, cs.y, ce.x, ce.y, start.radius);
   } else {
-    p1 = cs; // Fallback for point or unknown
+    p1 = cs;
   }
 
-  // Calculate End Point (p2)
   if (end.type === "sticky" || end.type === "rect" || end.type === "text" || end.type === "image") {
     p2 = intersectRect(ce.x, ce.y, cs.x, cs.y, {
       x: end.x,
@@ -105,8 +96,30 @@ export function connectPoints(start, end) {
   } else if (end.type === "circle") {
     p2 = intersectCircle(ce.x, ce.y, cs.x, cs.y, end.radius);
   } else {
-    p2 = ce; // Fallback for point or unknown
+    p2 = ce;
   }
 
   return [p1.x, p1.y, p2.x, p2.y];
+}
+
+// -------- Find nearest object to a position --------
+export function getNearestObj(objectsMap, pos, threshold = 20) {
+  let nearestObj = null;
+  let minDistance = Infinity;
+
+  for (const key in objectsMap) {
+    const obj = objectsMap[key];
+    // Use center positions for distance calculation
+    const center = getCenter(obj);
+    const dx = center.x - pos.x;
+    const dy = center.y - pos.y;
+    const distance = Math.sqrt(dx * dx + dy * dy);
+
+    if (distance < minDistance) {
+      minDistance = distance;
+      nearestObj = obj;
+    }
+  }
+
+  return minDistance <= threshold ? nearestObj : null;
 }
