@@ -18,6 +18,12 @@ const initialState = {
   history: [],
   future: [],
   historyLimit: 50,
+  reconnect: {
+  active: false,
+  arrowId: null,
+  endpoint: null, 
+},
+
 };
 
 const ActionTypes = {
@@ -102,6 +108,22 @@ function reducer(state, action) {
         selectedIds: [],
       };
     }
+    case "RECONNECT_START":
+  return {
+    ...state,
+    reconnect: {
+      active: true,
+      arrowId: action.payload.arrowId,
+      endpoint: action.payload.endpoint,
+    }
+  };
+
+case "RECONNECT_END":
+  return {
+    ...state,
+    reconnect: { active: false, arrowId: null, endpoint: null }
+  };
+
 
     default:
       return state;

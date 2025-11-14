@@ -63,11 +63,12 @@ function TextBox({ obj, selected, onSelect, onUpdate }) {
       const stageRect = stageContainer.getBoundingClientRect();
 
       setTextareaStyle({
-        top: stageRect.top + absPos.y,
-        left: stageRect.left + absPos.x,
-        width: (obj.width || 200) * scale.x,
+        position: 'fixed', // Use fixed positioning relative to viewport
+        top: `${stageRect.top + absPos.y}px`,
+        left: `${stageRect.left + absPos.x}px`,
+        width: `${(obj.width || 200) * scale.x}px`,
         height: 'auto',
-        fontSize: (obj.fontSize || 24) * scale.y,
+        fontSize: `${(obj.fontSize || 24) * scale.y}px`,
         fontFamily: 'Arial, sans-serif',
         lineHeight: '1.2',
         background: "white",
@@ -88,7 +89,7 @@ function TextBox({ obj, selected, onSelect, onUpdate }) {
 
     rafId = requestAnimationFrame(updatePosition);
     return () => cancelAnimationFrame(rafId);
-  }, [isEditing, obj.width, obj.fontSize, selected]);
+  }, [isEditing, obj.width, obj.fontSize, selected, obj.x, obj.y]); // Added obj.x/y to dependencies
 
   // Auto-resize textarea when text changes
   useEffect(() => {
@@ -162,7 +163,11 @@ function TextBox({ obj, selected, onSelect, onUpdate }) {
       {isEditing && (
         <textarea
           ref={textareaRef}
-          className="konva-text-editor"
+          
+          // --- FIX: Corrected className ---
+          className="k-textarea" 
+          // --- END FIX ---
+
           style={textareaStyle}
           value={textValue}
           onChange={handleTextChange}
@@ -184,7 +189,7 @@ function TextBox({ obj, selected, onSelect, onUpdate }) {
         lineHeight={1.2}
         draggable
         perfectDrawEnabled={false}
-        listening={true}
+        listening={!isEditing} // Stop listening when editing
         hitStrokeWidth={20}
         {...selectionStyle}
         onClick={handleClick}
@@ -192,6 +197,7 @@ function TextBox({ obj, selected, onSelect, onUpdate }) {
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
         wrap="word"
+        visible={!isEditing} // Hide Konva text when editing
       />
     </>
   );

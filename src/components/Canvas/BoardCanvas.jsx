@@ -1,11 +1,28 @@
 // src/components/Canvas/BoardCanvas.jsx
 import React, { useRef, useState, useCallback, useEffect } from "react";
 import { Stage, Layer, Rect, Line } from "react-konva";
-import { getRelativePointer } from "../../utils/konvaHelpers";
 import LayerObjects from "./LayerObjects";
 import Toolbar from "../Toolbar/Toolbar";
+import { getRelativePointer } from "../../utils/konvaHelpers";
+import { uuid } from "../../utils/uuid";
 import { useAppState, useAppDispatch, ActionTypes } from "../../context/AppProvider";
-import { uuid } from "../../utils/uuid"; 
+
+// Shared helper for arrow center
+const getObjectCenter = (o) => {
+  if (!o) return { x: 0, y: 0 };
+  switch (o.type) {
+    case "circle":
+    case "image":
+    case "sticky":
+      return { x: o.x, y: o.y };
+    case "rect":
+      return { x: o.x + o.width / 2, y: o.y + o.height / 2 };
+    case "text":
+      return { x: o.x + (o.width || 80) / 2, y: o.y + 12 };
+    default:
+      return { x: o.x || 0, y: o.y || 0 };
+  }
+};
 
 export default function BoardCanvas() {
   const stageRef = useRef();
@@ -13,245 +30,232 @@ export default function BoardCanvas() {
   const selectionRectRef = useRef();
   const fileInputRef = useRef();
 
+  // UI states
   const [currentLine, setCurrentLine] = useState(null);
   const [previewShape, setPreviewShape] = useState(null);
-  const [selectedColor, setSelectedColor] = useState("#000000");
   const [selection, setSelection] = useState({ start: null, active: false });
-  const [viewport, setViewport] = useState({
-    scale: 1,
-    x: 0,
-    y: 0
+  const [selectedColor, setSelectedColor] = useState("#000");
+
+  // NEW: Arrow reconnect state
+  const [reconnect, setReconnect] = useState({
+    active: false,
+    arrowId: null,
+    endpoint: null,     // "start" | "end"
+    startPos: null
   });
 
   const { objects, selectedIds, mode } = useAppState();
   const dispatch = useAppDispatch();
 
-  // Create object helper with validation
-  const createObject = useCallback((type, props) => {
-    const id = 'obj-' + uuid();
-    const obj = {
-      id,
-      type,
-      x: props.x || 0,
-      y: props.y || 0,
-      ...props
-    };
+  // Find real object node
+  const getClickedObjectNode = useCallback(
+    (node) => {
+      if (!node || node === stageRef.current) return null;
+      if (node.id() && objects[node.id()]) return node;
+      return getClickedObjectNode(node.getParent());
+    },
+    [objects]
+  );
 
-    // Validate required properties based on type
-    if (type === "freehand" && (!props.points || props.points.length < 4)) {
-      console.warn("Freehand object requires at least 4 points");
-      return null;
-    }
+  // Create object helper
+  const createObject = useCallback(
+    (type, props) => {
+      const id = "obj-" + uuid();
+      const obj = { id, type, ...props };
+      dispatch({ type: ActionTypes.ADD_OBJECT, payload: obj });
+      return id;
+    },
+    [dispatch]
+  );
 
-    dispatch({ type: ActionTypes.ADD_OBJECT, payload: obj });
-    return id;
-  }, [dispatch]);
+  // ============ START RECONNECT ===============
+  const handleStartReconnect = useCallback(
+    (arrowId, endpoint, handlePos) => {
+      const arrow = objects[arrowId];
+      const pos =
+        handlePos?.sx != null
+          ? { x: handlePos.sx, y: handlePos.sy }
+          : getObjectCenter(objects[arrow.startId]);
 
-  // Update viewport on stage changes
-  const updateViewport = useCallback(() => {
-    const stage = stageRef.current;
-    if (!stage) return;
-
-    setViewport({
-      scale: stage.scaleX(),
-      x: stage.x(),
-      y: stage.y()
-    });
-  }, []);
-
-  // --- NEW: Handler for color changes from Toolbar ---
-  const handleColorChange = useCallback((newColor) => {
-    // 1. Update the local color state (for creating new shapes)
-    setSelectedColor(newColor);
-
-    // 2. Update all selected objects
-    if (selectedIds.length > 0) {
-      selectedIds.forEach(id => {
-        const obj = objects[id];
-        
-        // Check if the object is a type that can be filled
-        if (obj && (obj.type === 'rect' || obj.type === 'circle' || obj.type === 'sticky' || obj.type === 'text')) {
-          dispatch({
-            type: ActionTypes.UPDATE_OBJECT,
-            payload: { id: id, updates: { fill: newColor } }
-          });
-        }
+      setReconnect({
+        active: true,
+        arrowId,
+        endpoint,
+        startPos: pos
       });
-    }
-  }, [selectedIds, dispatch, objects]); // Added objects
 
-  // Mouse event handlers
-  const handleMouseDown = useCallback((e) => {
-    const pos = getRelativePointer(stageRef.current);
-    if (!pos) return;
-
-    // Prevent default behavior
-    e.evt.preventDefault();
-
-    // Drawing mode
-    if (mode === "draw") {
-      setCurrentLine({
-        points: [pos.x, pos.y],
-        stroke: selectedColor,
-        strokeWidth: 3,
-        tension: 0.5,
+      // Start preview
+      setPreviewShape({
+        type: "arrow",
+        stroke: arrow.stroke || "#000",
+        strokeWidth: arrow.strokeWidth || 3,
+        points: [pos.x, pos.y, pos.x, pos.y]
       });
-      return;
-    }
-    
-    // --- NEW: Arrow drawing logic (start) ---
-    if (mode === "arrow") {
-      // Check if we clicked ON a shape (not the stage itself)
-      if (e.target !== stageRef.current) {
-        // Find the top-level group or shape that was clicked
-        const startNode = e.target.getSelfRect() ? e.target : e.target.getParent();
-        const startId = startNode?.id(); // Use optional chaining for safety
+    },
+    [objects]
+  );
+  // ============ END RECONNECT ===============
 
-        if (startId && objects[startId]) { // Check if it's a valid object
-           setPreviewShape({
+  // MOUSE DOWN
+  const handleMouseDown = useCallback(
+    (e) => {
+      const pos = getRelativePointer(stageRef.current);
+      if (!pos) return;
+
+      // Freehand
+      if (mode === "draw") {
+        setCurrentLine({
+          type: "freehand",
+          points: [pos.x, pos.y],
+          stroke: selectedColor,
+          strokeWidth: 3
+        });
+        return;
+      }
+
+      // Arrow creation
+      if (mode === "arrow") {
+        const objNode = getClickedObjectNode(e.target);
+        if (objNode) {
+          const id = objNode.id();
+          const center = getObjectCenter(objects[id]);
+          setPreviewShape({
             type: "arrow",
-            startId: startId, // Store the starting object ID
+            startId: id,
             stroke: selectedColor,
             strokeWidth: 3,
-            points: [pos.x, pos.y, pos.x, pos.y], // Preview from cursor
+            points: [center.x, center.y, pos.x, pos.y]
           });
         }
+        return;
       }
-      return; // Stop here for arrow mode
-    }
-    // --- END: Arrow drawing logic ---
 
-    // Shape creation modes
-    const shapeHandlers = {
-      sticky: () => createObject("sticky", {
-        x: pos.x,
-        y: pos.y,
-        width: 200,
-        height: 120,
-        fill: "#FFF59D",
-        text: "New Note",
-      }),
-
-      text: () => createObject("text", {
-        x: pos.x,
-        y: pos.y,
-        text: "Text",
-        fontSize: 18,
-        fill: selectedColor,
-        width: 200,
-      }),
-
-      rect: () => createObject("rect", {
-        x: pos.x,
-        y: pos.y,
-        width: 150,
-        height: 100,
-        fill: selectedColor || "#D1D1D1",
-      }),
-
-      circle: () => createObject("circle", {
-        x: pos.x,
-        y: pos.y,
-        radius: 50,
-        fill: selectedColor || "#8ECAE6",
-      }),
-      
-      // --- REMOVED: Arrow placeholder ---
-    };
-
-    if (shapeHandlers[mode]) {
-      shapeHandlers[mode]();
-      dispatch({ type: ActionTypes.SET_MODE, payload: "select" });
-      return;
-    }
-
-    if (mode === "line") {
-      setPreviewShape({
-        type: "line",
-        stroke: selectedColor,
-        strokeWidth: 3,
-        points: [pos.x, pos.y, pos.x, pos.y],
-      });
-      return;
-    }
-
-    // Selection mode
-    if (e.target === stageRef.current) { 
-      setSelection({ start: pos, active: true });
-      dispatch({ type: ActionTypes.SET_SELECTED, payload: [] });
-    }
-  }, [mode, selectedColor, createObject, dispatch, objects]); // Added 'objects'
-
-  const handleMouseMove = useCallback((e) => {
-    const pos = getRelativePointer(stageRef.current);
-    if (!pos) return;
-
-    // Drawing with performance optimization
-    if (mode === "draw" && currentLine) {
-      // ... (drawing logic unchanged)
-      setCurrentLine(prev => {
-        const newPoints = [...prev.points];
-        const lastX = newPoints[newPoints.length - 2];
-        const lastY = newPoints[newPoints.length - 1];
-        if (Math.abs(pos.x - lastX) > 2 || Math.abs(pos.y - lastY) > 2) {
-          newPoints.push(pos.x, pos.y);
-        }
-        return { ...prev, points: newPoints };
-      });
-      return;
-    }
-
-    // --- MODIFIED: Line and Arrow preview ---
-    if ((mode === "line" || mode === "arrow") && previewShape) {
-      setPreviewShape(prev => ({
-        ...prev,
-        points: [prev.points[0], prev.points[1], pos.x, pos.y],
-      }));
-      return;
-    }
-
-    // Selection rectangle
-    if (selection.active && selection.start) {
-      // ... (selection rect logic unchanged)
-      const sel = selectionRectRef.current;
-      const start = selection.start;
-      sel.position({
-        x: Math.min(pos.x, start.x),
-        y: Math.min(pos.y, start.y),
-      });
-      sel.width(Math.abs(pos.x - start.x));
-      sel.height(Math.abs(pos.y - start.y));
-      sel.visible(true);
-      layerRef.current?.batchDraw();
-    }
-  }, [mode, currentLine, previewShape, selection]); 
-
-  const handleMouseUp = useCallback(() => {
-    // Finish drawing
-    if (mode === "draw" && currentLine) {
-      // ... (drawing logic unchanged)
-      if (currentLine.points.length >= 4) {
-        createObject("freehand", {
-          points: currentLine.points,
-          stroke: currentLine.stroke,
-          strokeWidth: currentLine.strokeWidth,
-          tension: currentLine.tension,
+      // Line
+      if (mode === "line") {
+        setPreviewShape({
+          type: "line",
+          stroke: selectedColor,
+          strokeWidth: 3,
+          points: [pos.x, pos.y, pos.x, pos.y]
         });
+        return;
       }
+
+      // Selection box
+      if (e.target === stageRef.current) {
+        setSelection({ start: pos, active: true });
+        dispatch({ type: ActionTypes.SET_SELECTED, payload: [] });
+      }
+    },
+    [mode, objects, selectedColor, getClickedObjectNode, dispatch]
+  );
+
+  // MOUSE MOVE
+  const handleMouseMove = useCallback(
+    (e) => {
+      const pos = getRelativePointer(stageRef.current);
+      if (!pos) return;
+
+      // Freehand append
+      if (currentLine) {
+        setCurrentLine((line) => ({
+          ...line,
+          points: [...line.points, pos.x, pos.y]
+        }));
+        return;
+      }
+
+      // RECONNECT PREVIEW
+      if (reconnect.active && reconnect.startPos) {
+        setPreviewShape((p) => ({
+          ...p,
+          points: [reconnect.startPos.x, reconnect.startPos.y, pos.x, pos.y]
+        }));
+        return;
+      }
+
+      // Regular arrow preview
+      if (previewShape && previewShape.type === "arrow") {
+        const sObj = objects[previewShape.startId];
+        const c = getObjectCenter(sObj);
+        setPreviewShape((p) => ({
+          ...p,
+          points: [c.x, c.y, pos.x, pos.y]
+        }));
+        return;
+      }
+
+      // Line preview
+      if (previewShape?.type === "line") {
+        setPreviewShape((p) => ({
+          ...p,
+          points: [p.points[0], p.points[1], pos.x, pos.y]
+        }));
+      }
+
+      // Selection box update
+      if (selection.active && selection.start) {
+        const sel = selectionRectRef.current;
+        const s = selection.start;
+        sel.position({ x: Math.min(pos.x, s.x), y: Math.min(pos.y, s.y) });
+        sel.width(Math.abs(pos.x - s.x));
+        sel.height(Math.abs(pos.y - s.y));
+        sel.visible(true);
+        layerRef.current?.batchDraw();
+      }
+    },
+    [currentLine, previewShape, reconnect, objects, selection]
+  );
+
+  // MOUSE UP
+  const handleMouseUp = useCallback(() => {
+    // END FREEHAND
+    if (currentLine) {
+      if (currentLine.points.length > 3) createObject("freehand", currentLine);
       setCurrentLine(null);
       return;
     }
 
-    // Finish line
-    if (mode === "line" && previewShape) {
-      // ... (line logic unchanged)
-      const [x1, y1, x2, y2] = previewShape.points;
-      const distance = Math.sqrt(Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2));
-      if (distance > 10) { 
-        createObject("line", {
-          points: previewShape.points,
+    // END RECONNECT
+    if (reconnect.active) {
+      const pos = getRelativePointer(stageRef.current);
+      const found = stageRef.current.getIntersection(pos);
+      const node = getClickedObjectNode(found);
+      const id = node?.id();
+
+      const arrow = objects[reconnect.arrowId];
+      if (id && arrow && id !== arrow.startId) {
+        dispatch({
+          type: ActionTypes.UPDATE_OBJECT,
+          payload: {
+            id: arrow.id,
+            updates:
+              reconnect.endpoint === "start"
+                ? { startId: id }
+                : { endId: id }
+          }
+        });
+      }
+
+      setReconnect({ active: false, arrowId: null, endpoint: null, startPos: null });
+      setPreviewShape(null);
+      dispatch({ type: ActionTypes.SET_MODE, payload: "select" });
+      return;
+    }
+
+    // END ARROW CREATION
+    if (previewShape?.type === "arrow" && previewShape.startId) {
+      const pos = getRelativePointer(stageRef.current);
+      const found = stageRef.current.getIntersection(pos);
+      const node = getClickedObjectNode(found);
+      const endId = node?.id();
+
+      if (endId && endId !== previewShape.startId) {
+        createObject("arrow", {
+          startId: previewShape.startId,
+          endId,
           stroke: previewShape.stroke,
-          strokeWidth: previewShape.strokeWidth,
+          strokeWidth: previewShape.strokeWidth
         });
       }
       setPreviewShape(null);
@@ -259,196 +263,92 @@ export default function BoardCanvas() {
       return;
     }
 
-    // --- NEW: Arrow drawing logic (end) ---
-    if (mode === "arrow" && previewShape) {
-      const stage = stageRef.current;
-      const pos = getRelativePointer(stage);
-      
-      if (pos) {
-        // Find what's under the cursor
-        const endShape = stage.getIntersection(pos); 
-
-        // Check if we dropped on a valid shape that is NOT the start shape
-        if (endShape && endShape.id() && endShape.id() !== previewShape.startId) {
-          createObject("arrow", {
-            startId: previewShape.startId,
-            endId: endShape.id(),
-            stroke: previewShape.stroke,
-            strokeWidth: previewShape.strokeWidth,
-          });
-        }
-      }
-      
-      setPreviewShape(null); // Clear the preview
-      dispatch({ type: ActionTypes.SET_MODE, payload: "select" }); // Go back to select mode
+    // END LINE CREATION
+    if (previewShape?.type === "line") {
+      const pts = previewShape.points;
+      const dist = Math.hypot(pts[2] - pts[0], pts[3] - pts[1]);
+      if (dist > 10) createObject("line", previewShape);
+      setPreviewShape(null);
+      dispatch({ type: ActionTypes.SET_MODE, payload: "select" });
       return;
     }
-    // --- END: Arrow drawing logic ---
 
-    // Finish selection
+    // END SELECTION
     if (selection.active) {
+      selectionRectRef.current.visible(false);
       setSelection({ start: null, active: false });
-      if (selectionRectRef.current) {
-        selectionRectRef.current.visible(false);
-      }
     }
-  }, [mode, currentLine, previewShape, selection, createObject, dispatch]);
+  }, [
+    currentLine,
+    previewShape,
+    reconnect,
+    selection,
+    createObject,
+    dispatch,
+    objects,
+    getClickedObjectNode
+  ]);
 
-  // Image upload handler
-  const handleImageUpload = useCallback((e) => {
-    // ... (logic unchanged)
-    const file = e?.target?.files?.[0];
-    if (!file) return;
-    if (!file.type.startsWith('image/')) {
-      alert('Please select a valid image file (JPEG, PNG, GIF, etc.)');
-      return;
-    }
-    if (file.size > 10 * 1024 * 1024) { // 10MB limit
-      alert('Image size must be less than 10MB');
-      return;
-    }
-    const reader = new FileReader();
-    reader.onload = (loadEvent) => {
-      const dataUrl = loadEvent.target?.result;
-      if (typeof dataUrl === 'string') {
+  // IMAGE UPLOAD
+  const handleImageUpload = useCallback(
+    (e) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (ev) => {
         createObject("image", {
           x: 150,
           y: 150,
           width: 250,
           height: 180,
-          src: dataUrl,
+          src: ev.target.result
         });
-      }
-    };
-    reader.onerror = () => {
-      alert('Error reading image file');
-      console.error('FileReader error:', reader.error);
-    };
-    reader.readAsDataURL(file);
-    if (fileInputRef.current) {
-      fileInputRef.current.value = "";
-    }
-  }, [createObject]);
-
-  // Zoom handlers
-  const zoomAt = useCallback((scaleBy, fixedPoint = null) => {
-    // ... (logic unchanged)
-    const stage = stageRef.current;
-    if (!stage) return;
-    const oldScale = stage.scaleX();
-    const pointer = fixedPoint || stage.getPointerPosition();
-    if (!pointer) return;
-    const mousePoint = {
-      x: (pointer.x - stage.x()) / oldScale,
-      y: (pointer.y - stage.y()) / oldScale,
-    };
-    const newScale = Math.max(0.05, Math.min(20, oldScale * scaleBy));
-    if (Math.abs(newScale - oldScale) > 0.001) {
-      stage.scale({ x: newScale, y: newScale });
-      const newPos = {
-        x: pointer.x - mousePoint.x * newScale,
-        y: pointer.y - mousePoint.y * newScale,
       };
-      stage.position(newPos);
-      stage.batchDraw();
-      updateViewport();
-    }
-  }, [updateViewport]);
+      reader.readAsDataURL(file);
+    },
+    [createObject]
+  );
 
-  const handleWheel = useCallback((e) => {
-    e.evt.preventDefault();
-    const direction = e.evt.deltaY > 0 ? 1 / 1.2 : 1.2;
-    zoomAt(direction);
-  }, [zoomAt]);
-
-  // Keyboard shortcuts
-  useEffect(() => {
-    // ... (logic unchanged)
-    const handleKeyDown = (e) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
-        e.preventDefault();
-        dispatch({ type: ActionTypes.UNDO });
-      }
-      if ((e.ctrlKey || e.metaKey) && (e.shiftKey && e.key === 'z') || e.key === 'y') {
-        e.preventDefault();
-        dispatch({ type: ActionTypes.REDO });
-      }
-      if (e.key === 'Delete' || e.key === 'Backspace') {
-        e.preventDefault();
-        selectedIds.forEach(id => {
-          dispatch({ type: ActionTypes.DELETE_OBJECT, payload: id });
-        });
-      }
-      if (e.key === 'Escape') {
-        dispatch({ type: ActionTypes.SET_SELECTED, payload: [] });
-      }
-    };
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [dispatch, selectedIds]);
-
-  // Reset mode when component unmounts
-  useEffect(() => {
-    return () => {
-      dispatch({ type: ActionTypes.SET_MODE, payload: "select" });
-    };
-  }, [dispatch]);
-
+  // RENDER
   return (
-    <div className="canvas-container canvas-bg-grid relative w-full h-full overflow-hidden">
+    <div className="w-full h-full relative">
       <Toolbar
         mode={mode}
         setMode={(m) => dispatch({ type: ActionTypes.SET_MODE, payload: m })}
-        onColorChange={handleColorChange} // Use the new color handler
-        onImageUpload={() => fileInputRef.current?.click()}
-        onUndo={() => dispatch({ type: ActionTypes.UNDO })}
-        onRedo={() => dispatch({ type: ActionTypes.REDO })}
-        onZoomIn={() => zoomAt(1.2)}
-        onZoomOut={() => zoomAt(1 / 1.2)}
-        onClearBoard={() => {
-          if (window.confirm("Are you sure you want to clear the entire board? This action cannot be undone.")) {
-            dispatch({ type: ActionTypes.CLEAR_BOARD });
-          }
-        }}
+        onColorChange={setSelectedColor}
+        onImageUpload={() => fileInputRef.current.click()}
       />
 
-      {/* Hidden file input for image upload */}
       <input
-        ref={fileInputRef}
         type="file"
-        accept="image/*"
+        ref={fileInputRef}
         className="hidden"
+        accept="image/*"
         onChange={handleImageUpload}
       />
 
-      {/* Konva Stage */}
       <Stage
         ref={stageRef}
         width={window.innerWidth}
         height={window.innerHeight}
         draggable={mode === "select"}
-        onWheel={handleWheel}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
-        onDragEnd={updateViewport}
-        className="konva-container"
+        className="bg-gray-100"
       >
         <Layer ref={layerRef}>
-          {/* Render all objects */}
           <LayerObjects
             objects={objects}
             selectedIds={selectedIds}
-            onSelect={(ids) => dispatch({ type: ActionTypes.SET_SELECTED, payload: ids })}
-            onUpdate={(id, updates) => dispatch({
-              type: ActionTypes.UPDATE_OBJECT,
-              payload: { id, updates }
-            })}
             layerRef={layerRef}
-            viewportScale={viewport.scale}
+            onSelect={(ids) => dispatch({ type: ActionTypes.SET_SELECTED, payload: ids })}
+            onUpdate={(id, updates) =>
+              dispatch({ type: ActionTypes.UPDATE_OBJECT, payload: { id, updates } })
+            }
+            onStartReconnect={handleStartReconnect}
           />
 
-          {/* Drawing preview */}
           {currentLine && (
             <Line
               points={currentLine.points}
@@ -456,14 +356,9 @@ export default function BoardCanvas() {
               strokeWidth={currentLine.strokeWidth}
               lineCap="round"
               lineJoin="round"
-              tension={currentLine.tension}
-              listening={false}
-              perfectDrawEnabled={false}
-              globalCompositeOperation="source-over"
             />
           )}
 
-          {/* Line & Arrow preview */}
           {previewShape && (
             <Line
               points={previewShape.points}
@@ -471,31 +366,18 @@ export default function BoardCanvas() {
               strokeWidth={previewShape.strokeWidth}
               lineCap="round"
               lineJoin="round"
-              listening={false}
-              perfectDrawEnabled={false}
             />
           )}
 
-          {/* Selection rectangle */}
           <Rect
             ref={selectionRectRef}
-            fill="rgba(59, 130, 246, 0.1)"
-            stroke="rgba(59, 130, 246, 0.8)"
-            strokeWidth={1.5}
-            dash={[5, 5]}
+            fill="rgba(0,120,255,0.15)"
+            stroke="rgba(0,120,255,0.5)"
+            strokeWidth={1}
             visible={false}
-            listening={false}
-            perfectDrawEnabled={false}
           />
         </Layer>
       </Stage>
-
-      {/* Viewport info (optional debug overlay) */}
-      {process.env.NODE_ENV === 'development' && (
-        <div className="absolute bottom-4 left-4 bg-black/80 text-white text-xs px-2 py-1 rounded">
-          Zoom: {viewport.scale.toFixed(2)}x | Objects: {Object.keys(objects).length}
-        </div>
-      )}
     </div>
   );
 }
