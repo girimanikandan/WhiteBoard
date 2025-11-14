@@ -72,10 +72,13 @@ export default function BoardCanvas() {
   const handleStartReconnect = useCallback(
     (arrowId, endpoint, handlePos) => {
       const arrow = objects[arrowId];
+      if (!arrow) return; // Add guard clause
       const pos =
         handlePos?.sx != null
           ? { x: handlePos.sx, y: handlePos.sy }
-          : getObjectCenter(objects[arrow.startId]);
+          // Fix: Check if start object exists before getting center
+          : (objects[arrow.startId] ? getObjectCenter(objects[arrow.startId]) : { x: 0, y: 0 });
+
 
       setReconnect({
         active: true,
@@ -92,7 +95,7 @@ export default function BoardCanvas() {
         points: [pos.x, pos.y, pos.x, pos.y]
       });
     },
-    [objects]
+    [objects] // objects is a dependency
   );
   // ============ END RECONNECT ===============
 
@@ -101,6 +104,9 @@ export default function BoardCanvas() {
     (e) => {
       const pos = getRelativePointer(stageRef.current);
       if (!pos) return;
+
+      // Check if clicking on an existing object (for arrow mode)
+      const objNode = getClickedObjectNode(e.target);
 
       // Freehand
       if (mode === "draw") {
@@ -115,7 +121,6 @@ export default function BoardCanvas() {
 
       // Arrow creation
       if (mode === "arrow") {
-        const objNode = getClickedObjectNode(e.target);
         if (objNode) {
           const id = objNode.id();
           const center = getObjectCenter(objects[id]);
@@ -141,13 +146,68 @@ export default function BoardCanvas() {
         return;
       }
 
-      // Selection box
+      // --- START: MODIFIED/ADDED LOGIC FOR MISSING TOOLS ---
+      // Only create new shapes if clicking the stage itself
       if (e.target === stageRef.current) {
-        setSelection({ start: pos, active: true });
-        dispatch({ type: ActionTypes.SET_SELECTED, payload: [] });
+        if (mode === "rect") {
+          createObject("rect", {
+            x: pos.x - 50, // Center the shape on click
+            y: pos.y - 50,
+            width: 100,
+            height: 100,
+            fill: selectedColor,
+          });
+          dispatch({ type: ActionTypes.SET_MODE, payload: "select" });
+          return;
+        }
+
+        if (mode === "circle") {
+          createObject("circle", {
+            x: pos.x,
+            y: pos.y,
+            radius: 50,
+            fill: selectedColor,
+          });
+          dispatch({ type: ActionTypes.SET_MODE, payload: "select" });
+          return;
+        }
+
+        if (mode === "text") {
+          createObject("text", {
+            x: pos.x,
+            y: pos.y,
+            text: "New Text",
+            fill: selectedColor,
+            fontSize: 24,
+            width: 150,
+          });
+          dispatch({ type: ActionTypes.SET_MODE, payload: "select" });
+          return;
+        }
+        
+        if (mode === "sticky") {
+          createObject("sticky", {
+            x: pos.x, // Place top-left at cursor
+            y: pos.y,
+            width: 150,
+            height: 150,
+            fill: "#FFF59D", // Default sticky color
+            text: "Sticky Note",
+          });
+          dispatch({ type: ActionTypes.SET_MODE, payload: "select" });
+          return;
+        }
+        // --- END: MODIFIED/ADDED LOGIC ---
+
+        // Selection box (moved inside the stage click check)
+        if (mode === "select") {
+          setSelection({ start: pos, active: true });
+          dispatch({ type: ActionTypes.SET_SELECTED, payload: [] });
+        }
       }
     },
-    [mode, objects, selectedColor, getClickedObjectNode, dispatch]
+    // Added createObject to dependency array
+    [mode, objects, selectedColor, getClickedObjectNode, dispatch, createObject]
   );
 
   // MOUSE MOVE
@@ -177,11 +237,14 @@ export default function BoardCanvas() {
       // Regular arrow preview
       if (previewShape && previewShape.type === "arrow") {
         const sObj = objects[previewShape.startId];
-        const c = getObjectCenter(sObj);
-        setPreviewShape((p) => ({
-          ...p,
-          points: [c.x, c.y, pos.x, pos.y]
-        }));
+        // Add guard check for object existence
+        if (sObj) {
+          const c = getObjectCenter(sObj);
+          setPreviewShape((p) => ({
+            ...p,
+            points: [c.x, c.y, pos.x, pos.y]
+          }));
+        }
         return;
       }
 
@@ -224,7 +287,7 @@ export default function BoardCanvas() {
       const id = node?.id();
 
       const arrow = objects[reconnect.arrowId];
-      if (id && arrow && id !== arrow.startId) {
+      if (id && arrow && id !== arrow.startId) { // Check arrow exists
         dispatch({
           type: ActionTypes.UPDATE_OBJECT,
           payload: {
@@ -356,6 +419,7 @@ export default function BoardCanvas() {
               strokeWidth={currentLine.strokeWidth}
               lineCap="round"
               lineJoin="round"
+              listening={false} // Performance boost
             />
           )}
 
@@ -366,6 +430,8 @@ export default function BoardCanvas() {
               strokeWidth={previewShape.strokeWidth}
               lineCap="round"
               lineJoin="round"
+              dash={[10, 5]} // Add dash to preview line
+              listening={false} // Performance boost
             />
           )}
 
@@ -375,6 +441,7 @@ export default function BoardCanvas() {
             stroke="rgba(0,120,255,0.5)"
             strokeWidth={1}
             visible={false}
+            listening={false} // Performance boost
           />
         </Layer>
       </Stage>
