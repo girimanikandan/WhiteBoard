@@ -68,22 +68,43 @@ function reducer(state, action) {
         ...state.objects,
         [id]: { ...existingObject, ...updates },
       };
-      return { ...state, objects: newObjects };
+      
+      // --- CHANGE: Save history on update ---
+      return { 
+        ...state, 
+        objects: newObjects,
+        history: [...state.history, state.objects], // Save previous state
+        future: [], // Clear future on update
+      };
+      // --- END OF CHANGE ---
     }
 
     case ActionTypes.DELETE_OBJECT: {
       const idToDelete = action.payload;
       const newObjects = { ...state.objects };
       delete newObjects[idToDelete];
+
+      // --- CHANGE: Save history on delete ---
       return {
         ...state,
         objects: newObjects,
         selectedIds: state.selectedIds.filter(id => id !== idToDelete),
+        history: [...state.history, state.objects], // Save previous state
+        future: [], // Clear future on delete
       };
+      // --- END OF CHANGE ---
     }
 
     case ActionTypes.CLEAR_BOARD:
-      return { ...state, objects: {}, selectedIds: [] };
+      // --- BONUS FIX: Also add CLEAR_BOARD to history ---
+      return { 
+        ...state, 
+        objects: {}, 
+        selectedIds: [],
+        history: [...state.history, state.objects], // Save previous state
+        future: [],
+      };
+      // --- END OF CHANGE ---
 
     case ActionTypes.UNDO: {
       if (state.history.length === 0) return state;
